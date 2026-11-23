@@ -27,7 +27,16 @@ if ($Publish) {
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination $destination
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Run.cmd') -Destination $destination
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'docs') -Destination $destination -Recurse -Force
+    # Ship only repository docs; local notes ignored by Git never enter a package.
+    $docFiles = @(& git -C $PSScriptRoot ls-files -- docs 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $docFiles.Count -eq 0) { $docFiles = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'docs') -File -Recurse | ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) }) }
+    $packagedDocs = Join-Path $destination 'docs'
+    if (Test-Path -LiteralPath $packagedDocs) { Remove-Item -LiteralPath $packagedDocs -Recurse -Force }
+    foreach ($file in $docFiles) {
+        $target = Join-Path $destination $file
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $target
+    }
     $archive = "$destination.zip"
     Compress-Archive -Path (Join-Path $destination '*') -DestinationPath $archive -Force
     Write-Output "Runnable application: $destination\RobloxAfkManager.exe"
