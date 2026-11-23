@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in the manager or the mobile dashboard isn't working.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Before posting:** remove usernames, account IDs, Tailscale addresses and access codes from anything you paste. Logs live in `%LOCALAPPDATA%\RobloxAfkManager\Logs` and can contain local details.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: e.g. 0.8.0
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open 4 clients
+        2. Ignore one
+        3. ...
+  - type: input
+    id: setup
+    attributes:
+      label: Setup
+      placeholder: Windows 11 24H2, 8 clients, 1440p at 125% scaling
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines (reviewed for private details)
+      render: text

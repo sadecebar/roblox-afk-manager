@@ -1,0 +1,96 @@
+using System.Windows;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using RobloxAfkManager.App.Controls;
+using RobloxAfkManager.App.ViewModels;
+
+namespace RobloxAfkManager.App;
+public partial class MainWindow : Window
+{
+    private readonly MainViewModel viewModel;
+    private bool restoringResources;
+    private Services.DesktopAlerts? desktopAlerts;
+    public MainWindow() : this(new MainViewModel()) { }
+    public MainWindow(MainViewModel viewModel)
+    {
+        InitializeComponent();
+        DataContext = this.viewModel = viewModel;
+        foreach (var popup in new[] { IgnoredPopup, ResourcePopup, MobilePopup, NamePopup, ActivityPopup })
+        {
+            popup.PopupAnimation = SystemParameters.ClientAreaAnimation ? PopupAnimation.Fade : PopupAnimation.None;
+            popup.Opened += (_, _) =>
+            {
+                if (popup.Child is not Border border) return;
+                double availableHeight = Math.Max(160, SystemParameters.WorkArea.Height - 80);
+                if (border.Child is ScrollViewer existing) existing.MaxHeight = Math.Min(500, availableHeight);
+                else
+                {
+                    var content = border.Child; border.Child = null;
+                    border.Child = new ScrollViewer { Content = content, MaxHeight = Math.Min(500, availableHeight),
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+                }
+            };
+        }
+        Loaded += async (_, _) => await viewModel.RefreshAsync();
+        viewModel.AlertRaised += OnAlert;
+        Closed += (_, _) => { viewModel.AlertRaised -= OnAlert; desktopAlerts?.Dispose(); viewModel.Dispose(); };
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && (IgnoredPopup.IsOpen || ResourcePopup.IsOpen || MobilePopup.IsOpen || NamePopup.IsOpen || ActivityPopup.IsOpen)) { IgnoredPopup.IsOpen = false; ResourcePopup.IsOpen = false; MobilePopup.IsOpen = false; NamePopup.IsOpen = false; ActivityPopup.IsOpen = false; e.Handled = true; } };
+    }
+    private void WorkspaceRoot_SizeChanged(object sender, SizeChangedEventArgs e) => WorkspaceAppearance.SetIsCompact(WorkspaceRoot, e.NewSize.Width < 980);
+    private void TogglePanel(Popup target)
+    {
+        bool open = !target.IsOpen;
+        IgnoredPopup.IsOpen = ResourcePopup.IsOpen = MobilePopup.IsOpen = NamePopup.IsOpen = ActivityPopup.IsOpen = false;
+        target.IsOpen = open;
+    }
+    private void IgnoredButton_Click(object sender, RoutedEventArgs e) => TogglePanel(IgnoredPopup);
+    private void ResourceButton_Click(object sender, RoutedEventArgs e) => TogglePanel(ResourcePopup);
+    private void MobileButton_Click(object sender, RoutedEventArgs e) => TogglePanel(MobilePopup);
+    private void ActivityButton_Click(object sender, RoutedEventArgs e) { TogglePanel(ActivityPopup); if (ActivityPopup.IsOpen) viewModel.MarkActivityRead(); }
+    private void ClearActivity_Click(object sender, RoutedEventArgs e) => viewModel.ClearActivity();
+    private void OnAlert(Core.ActivityEntry entry) => desktopAlerts?.Show(entry);
+    private void CopyMobileCode_Click(object sender, RoutedEventArgs e)
+    {
+        try { Clipboard.SetText(viewModel.Remote.AccessCode); }
+        catch (COMException) { /* Clipboard busy: the read-only code field also supports manual copy. */ }
+    }
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var handle = new WindowInteropHelper(this).Handle;
+        desktopAlerts = new(handle);
+        int enabled = 1;
+        _ = DwmSetWindowAttribute(handle, 20, ref enabled, sizeof(int));
+        int captionColor = 0x000A0707; // COLORREF (BGR) for #07070A, matching the workspace canvas on Windows 11.
+        _ = DwmSetWindowAttribute(handle, 35, ref captionColor, sizeof(int));
+        HwndSource.FromHwnd(handle)?.AddHook(WindowMessage);
+    }
+    private nint WindowMessage(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
+    {
+        if (msg is 0x7E or 0x1A or 0x2E0) viewModel.NotifyDisplayChanged();
+        return 0;
+    }
+    protected override async void OnClosing(CancelEventArgs e)
+    {
+        if (viewModel.Busy || viewModel.Remote.Busy || restoringResources) { e.Cancel = true; return; }
+        if (viewModel.Remote.Running)
+        {
+            e.Cancel = true; restoringResources = true;
+            try { await viewModel.Remote.StopAsync(); }
+            finally { restoringResources = false; }
+            Close(); return;
+        }
+        if (viewModel.HasResourceChanges)
+        {
+            e.Cancel = true; restoringResources = true;
+            try { if (await viewModel.StopResourcePlansAsync(forgetPreferences: false)) { restoringResources = false; Close(); } }
+            finally { restoringResources = false; }
+            return;
+        }
+        base.OnClosing(e);
+    }
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
+}

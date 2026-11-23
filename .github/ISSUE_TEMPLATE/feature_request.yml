@@ -1,0 +1,19 @@
+name: Feature idea
+description: Suggest something that would make the manager more useful.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the situation, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+  - type: markdown
+    attributes:
+      value: |
+        Out of scope by design: gameplay automation, auto-rejoin or account launching (these need login cookies), anti-idle tricks, memory reading or code injection.
