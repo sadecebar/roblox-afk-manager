@@ -229,6 +229,10 @@ docs/                          Guides and implementation notes
 | [WIN32.md](docs/WIN32.md) | Windows, DWM and public API implementation notes |
 | [REPOSITORY.md](docs/REPOSITORY.md) | Keeping personal data out of commits |
 
+## 📝 What's new
+
+See the [changelog](CHANGELOG.md) for patch notes on every release.
+
 ## 🤝 Contributing
 
 Bug reports and ideas are welcome through [Issues](../../issues). Pull requests too: run `.\build.ps1` and `.\tools\Check-Repository.ps1` first, and read [REPOSITORY.md](docs/REPOSITORY.md) so no personal data slips into a commit.
