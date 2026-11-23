@@ -19,6 +19,7 @@ public sealed class ClientTileViewModel(ClientWindow client, int slot) : Observa
     public ImageSource? Avatar { get; private set; }
     public string AvatarFallback => Label.Length > 0 ? Label[..1].ToUpperInvariant() : "?";
     public string ProfileHint => AccountId is { } id ? $"Account ID {id}. Name, order, ignore choice and preferred plan are remembered across restarts." : "Waiting for an account ID. Names and choices currently apply to this process only.";
+    public string? KnownGameName => account?.GameName;
     public string GameName => account?.GameName ?? (Session?.PlaceId is { } place ? $"Place {place}" : "Game not identified");
     public string SessionStatus => Status == "Not responding" ? "Not responding" : Session is null || clock - Session.CheckedAt > TimeSpan.FromMinutes(3) ? "Session unknown" : Session.Phase switch
     {

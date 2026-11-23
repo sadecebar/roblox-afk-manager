@@ -135,7 +135,7 @@ public sealed partial class MainViewModel
             }
             if (Clients.All(c => c.AccountId is not null)) manualOrderChanged = false;
         }
-        RaiseResources(); RaiseSelection(); ObserveHealth();
+        RaiseResources(); RaiseSelection(); ObserveHealth(); TrackRoster();
     }
     private void ObserveHealth()
     {

@@ -67,7 +67,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Remote = new(windows.IsCurrent, log);
         resources = new(resourceSystem ?? new Win32ProcessResources(), log);
         memoryCaps = new(workingSetSystem ?? new Win32ProcessResources(), log);
-        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore()));
+        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster();
         selectedLayout = Layouts[0];
         DetectCommand = new(() => RefreshAsync(true), () => !Busy, HandleError);
         ArrangeCommand = new(ArrangeAsync, () => !Busy && IncludedCount > 0 && SelectedMonitor is not null, HandleError);
@@ -146,7 +146,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public int AttentionCount => VisibleClients.Count(c => c.NeedsAttention);
     public bool HasAttention => AttentionCount > 0;
     public int JoinedCount => VisibleClients.Count(c => c.StatusTone == "Good");
-    public string HealthSummary => VisibleClients.Count == 0 ? "No clients" : AttentionCount == 0 ? "All clear" : AttentionCount == 1 ? "1 needs attention" : $"{AttentionCount} need attention";
+    public string HealthSummary => AttentionCount > 0 ? (AttentionCount == 1 ? "1 needs attention" : $"{AttentionCount} need attention")
+        : OfflineCount > 0 ? $"{OfflineCount} offline" : VisibleClients.Count == 0 ? "No clients" : "All clear";
+    // Alert: a running client needs a look. Warn: an expected account is not running. Good / Idle otherwise.
+    public string HealthTone => AttentionCount > 0 ? "Alert" : OfflineCount > 0 ? "Warn" : VisibleClients.Count == 0 ? "Idle" : "Good";
     public Func<WindowIdentity, bool> PreviewValidator => windows.IsCurrent;
     public bool IsEmpty => VisibleClients.Count == 0;
     public string EmptyHeading => ClientCount == 0 ? "Open Roblox to start" : HasPendingProfiles ? "Identifying accounts" : "All clients are ignored";
@@ -225,7 +228,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (state.resourceResult is { } result) { Warning = !result.Success; Message = result.Message; }
         if (state.memoryResult is { } memoryResult) { Warning |= !memoryResult.Success; Message += " " + memoryResult.Message; }
         RaiseResources();
-        Raise(nameof(ClientCount)); Raise(nameof(TotalMemory)); RaiseSelection();
+        Raise(nameof(ClientCount)); Raise(nameof(TotalMemory)); RaiseSelection(); TrackRoster();
         ObserveHealth();
         _ = RefreshAccountNamesAsync();
     }
@@ -373,7 +376,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Raise(nameof(IncludedCount)); Raise(nameof(IgnoredCount)); Raise(nameof(SelectionSummary)); Raise(nameof(IgnoredMenuLabel)); Raise(nameof(HasIgnored));
         Raise(nameof(IsEmpty)); Raise(nameof(EmptyHeading)); Raise(nameof(EmptyMessage)); Raise(nameof(DashboardPreviewAspectRatio));
         Raise(nameof(PendingProfileCount)); Raise(nameof(HasPendingProfiles)); Raise(nameof(PendingProfileHint));
-        Raise(nameof(AttentionCount)); Raise(nameof(HasAttention)); Raise(nameof(JoinedCount)); Raise(nameof(HealthSummary));
+        Raise(nameof(AttentionCount)); Raise(nameof(HasAttention)); Raise(nameof(JoinedCount)); Raise(nameof(HealthSummary)); Raise(nameof(HealthTone));
     }
     private static void Reconcile(ObservableCollection<ClientTileViewModel> collection, IReadOnlyList<ClientTileViewModel> desired)
     {
@@ -419,6 +422,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (disposed) return;
+        try { TrackRoster(forceSave: true); } catch (Exception ex) { log.Write("Account roster could not be saved on close.", ex); }
         disposed = true; monitor?.Dispose();
         nameCancellation.Cancel();
         if (!resolvingNames) nameCancellation.Dispose();

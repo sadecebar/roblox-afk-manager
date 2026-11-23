@@ -29,7 +29,9 @@ public sealed class WorkspaceStore(string? path = null) : IWorkspaceStore
     private static WorkspaceSettings Sanitize(WorkspaceSettings settings) => new(
         (settings.Profiles ?? []).Where(p => p is not null && p.UserId > 0 && p.Order >= 0 && p.Order <= 100000 &&
             (p.PreferredPlan is null || Enum.IsDefined(p.PreferredPlan.Value)))
-            .Select(p => p with { CustomName = AccountNames.Normalize(p.CustomName) }).DistinctBy(p => p.UserId).Take(128).ToArray(),
+            .Select(p => p with { CustomName = AccountNames.Normalize(p.CustomName), Username = AccountNames.Normalize(p.Username),
+                LastGame = p.LastGame is { Length: > 0 and <= 120 } game ? game : null,
+                LastSeen = p.LastSeen is { } seen && seen <= DateTimeOffset.UtcNow.AddDays(1) ? seen : null }).DistinctBy(p => p.UserId).Take(128).ToArray(),
         (settings.History ?? []).Where(e => e is not null && e.Label is { Length: <= 64 } && e.Message is { Length: <= 240 })
             .OrderByDescending(e => e.At).Take(100).ToArray(), settings.Notifications);
 }

@@ -149,6 +149,48 @@ internal static class SessionWorkspaceTests
             Program.Check(!vm.HasResourceChanges && vm.HasSavedPlans && vm.ResetResourcePlanCommand.CanExecute(null));
             Program.Check(vm.StopResourcePlansAsync().GetAwaiter().GetResult() && !vm.HasSavedPlans);
         });
+        test("Offline roster lists recent, non-ignored, non-running accounts with name fallbacks", () =>
+        {
+            var profiles = new AccountProfile[]
+            {
+                new(1, "Custom", 2, false, null, "user1", "Game A", Now.AddMinutes(-14)),
+                new(2, null, 1, false, null, "user2", null, Now.AddHours(-3)),
+                new(3, null, 3, true, null, "ignored", null, Now.AddMinutes(-5)),
+                new(4, null, 4, false, null, "running", null, Now),
+                new(5, null, 5, false, null, "stale", null, Now.AddHours(-25)),
+                new(6, null, 6, false, null, null, null, Now.AddMinutes(-1)),
+                new(7, null, 7, false, null, "never", null, null),
+            };
+            var offline = AccountRoster.Offline(profiles, new HashSet<long> { 4 }, Now);
+            Program.Check(offline.Select(o => o.UserId).SequenceEqual(new long[] { 2, 1, 6 }), "Offline roster selection or order is wrong");
+            Program.Check(offline[1].Name == "Custom" && offline[0].Name == "user2" && offline[2].Name == "Account 6");
+            Program.Check(AccountRoster.Ago(Now.AddMinutes(-14), Now) == "14 min ago" && AccountRoster.Ago(Now.AddSeconds(-20), Now) == "just now");
+        });
+        test("A closed account appears offline, survives restart, and Forget clears it until it runs again", () =>
+        {
+            var store = new MemoryWorkspaceStore(); var fake = new FakeWindowSystem(2);
+            using (var vm = new MainViewModel(fake, new TestLog(), new FakeProcessResources(fake), new FakeWorkingSets(fake), new DetailsLookup(), workspaceStore: store))
+            {
+                Ready(vm);
+                Program.Check(vm.OfflineCount == 0 && vm.HealthTone == "Good", "Running accounts must not be listed offline");
+                var closed = vm.Clients.Single(c => c.AccountId == 77);
+                fake.Closed.Add(closed.Identity); Ready(vm);
+                Program.Check(vm.OfflineCount == 1 && vm.OfflineAccounts.Single().Name == "Fixture101", "Closed account was not listed offline");
+                Program.Check(vm.OfflineAccounts.Single().Details.Contains("Fixture game") && vm.HealthSummary == "1 offline" && vm.HealthTone == "Warn");
+                Program.Check(store.Read().Profiles.Single(p => p.UserId == 77) is { Username: "Fixture101", LastSeen: not null });
+            }
+            var reopenedWindows = new FakeWindowSystem(2); reopenedWindows.Closed.Add(reopenedWindows.Placements.Keys.Single(k => k.ProcessId == 101));
+            using (var reopened = new MainViewModel(reopenedWindows, new TestLog(), new FakeProcessResources(reopenedWindows), new FakeWorkingSets(reopenedWindows), new DetailsLookup(), workspaceStore: store))
+            {
+                Ready(reopened);
+                Program.Check(reopened.OfflineAccounts.Single().UserId == 77, "Offline account was not remembered across a manager restart");
+                reopened.ForgetOfflineCommand.Execute(reopened.OfflineAccounts.Single());
+                Program.Check(reopened.OfflineCount == 0 && store.Read().Profiles.Single(p => p.UserId == 77).LastSeen is null, "Forget did not clear the account");
+                reopenedWindows.Closed.Clear();
+                reopened.RefreshAsync(manual: true).GetAwaiter().GetResult(); Wait(() => !reopened.IsResolvingAccounts && !reopened.Busy && reopened.Clients.All(c => c.AccountId is not null));
+                Program.Check(store.Read().Profiles.Single(p => p.UserId == 77).LastSeen is not null, "A forgotten account was not tracked again after running");
+            }
+        });
         test("Late account details cannot restore a profile onto a replacement process", () =>
         {
             var store = new MemoryWorkspaceStore(); store.Write(new([new(77, "Old profile", 0, true, ResourcePlan.Low)], []));

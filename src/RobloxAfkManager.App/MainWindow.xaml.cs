@@ -18,7 +18,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = this.viewModel = viewModel;
-        foreach (var popup in new[] { IgnoredPopup, ResourcePopup, MobilePopup, NamePopup, ActivityPopup })
+        foreach (var popup in new[] { IgnoredPopup, ResourcePopup, MobilePopup, NamePopup, ActivityPopup, OfflinePopup })
         {
             popup.PopupAnimation = SystemParameters.ClientAreaAnimation ? PopupAnimation.Fade : PopupAnimation.None;
             popup.Opened += (_, _) =>
@@ -37,19 +37,26 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => await viewModel.RefreshAsync();
         viewModel.AlertRaised += OnAlert;
         Closed += (_, _) => { viewModel.AlertRaised -= OnAlert; desktopAlerts?.Dispose(); viewModel.Dispose(); };
-        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && (IgnoredPopup.IsOpen || ResourcePopup.IsOpen || MobilePopup.IsOpen || NamePopup.IsOpen || ActivityPopup.IsOpen)) { IgnoredPopup.IsOpen = false; ResourcePopup.IsOpen = false; MobilePopup.IsOpen = false; NamePopup.IsOpen = false; ActivityPopup.IsOpen = false; e.Handled = true; } };
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && (IgnoredPopup.IsOpen || ResourcePopup.IsOpen || MobilePopup.IsOpen || NamePopup.IsOpen || ActivityPopup.IsOpen || OfflinePopup.IsOpen)) { IgnoredPopup.IsOpen = false; ResourcePopup.IsOpen = false; MobilePopup.IsOpen = false; NamePopup.IsOpen = false; ActivityPopup.IsOpen = false; OfflinePopup.IsOpen = false; e.Handled = true; } };
     }
     private void WorkspaceRoot_SizeChanged(object sender, SizeChangedEventArgs e) => WorkspaceAppearance.SetIsCompact(WorkspaceRoot, e.NewSize.Width < 980);
     private void TogglePanel(Popup target)
     {
         bool open = !target.IsOpen;
-        IgnoredPopup.IsOpen = ResourcePopup.IsOpen = MobilePopup.IsOpen = NamePopup.IsOpen = ActivityPopup.IsOpen = false;
+        IgnoredPopup.IsOpen = ResourcePopup.IsOpen = MobilePopup.IsOpen = NamePopup.IsOpen = ActivityPopup.IsOpen = OfflinePopup.IsOpen = false;
         target.IsOpen = open;
     }
     private void IgnoredButton_Click(object sender, RoutedEventArgs e) => TogglePanel(IgnoredPopup);
     private void ResourceButton_Click(object sender, RoutedEventArgs e) => TogglePanel(ResourcePopup);
     private void MobileButton_Click(object sender, RoutedEventArgs e) => TogglePanel(MobilePopup);
     private void ActivityButton_Click(object sender, RoutedEventArgs e) { TogglePanel(ActivityPopup); if (ActivityPopup.IsOpen) viewModel.MarkActivityRead(); }
+    private void OfflineButton_Click(object sender, RoutedEventArgs e) => TogglePanel(OfflinePopup);
+    private void CopyOfflineName_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: OfflineAccountView account }) return;
+        try { Clipboard.SetText(account.Name); viewModel.ReportCopied(account.Name); }
+        catch (COMException) { /* Clipboard busy: the name stays visible in the list. */ }
+    }
     private void ClearActivity_Click(object sender, RoutedEventArgs e) => viewModel.ClearActivity();
     private void OnAlert(Core.ActivityEntry entry) => desktopAlerts?.Show(entry);
     private void CopyMobileCode_Click(object sender, RoutedEventArgs e)

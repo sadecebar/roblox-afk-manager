@@ -79,6 +79,7 @@ internal static class UiSmoke
             }
             Program.Check(listener.Errors.Count == 0, string.Join(Environment.NewLine, listener.Errors));
             VerifyActivityPanel();
+            VerifyOfflinePanel();
         }
         finally
         {
@@ -164,6 +165,32 @@ internal static class UiSmoke
             notifications.IsChecked = false; Pump(); Program.Check(!store.Read().Notifications, "Notification preference did not save");
             NativeSmoke.Descendants(popup.Child).OfType<Button>().Single(b => Equals(b.Content, "Clear")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
             Program.Check(!vm.HasActivity && store.Read().History.Count == 0, "Clear did not remove stored history");
+            popup.IsOpen = false;
+        }
+        finally { host.Close(); Pump(); }
+    }
+    private static void VerifyOfflinePanel()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var store = new MemoryWorkspaceStore();
+        store.Write(new([new(501, null, 0, false, null, "FixtureNight", "Fixture game", now.AddMinutes(-14)),
+            new(502, "Fixture alias", 1, false, null, "FixtureDawn", null, now.AddHours(-2)),
+            new(503, null, 2, true, null, "FixtureIgnored", null, now.AddMinutes(-3))], []));
+        using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: store);
+        var host = new MainWindow(vm) { ShowActivated = false, WindowState = WindowState.Normal, Width = 900, Height = 600 };
+        try
+        {
+            host.Show(); PumpUntil(() => !vm.Busy, TimeSpan.FromSeconds(5));
+            Program.Check(vm.OfflineCount == 2 && vm.HealthSummary == "2 offline", "Offline accounts were not counted");
+            ((Button)host.FindName("OfflineButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
+            var popup = (System.Windows.Controls.Primitives.Popup)host.FindName("OfflinePopup");
+            var texts = NativeSmoke.Descendants(popup.Child).OfType<TextBlock>().Select(t => t.Text).ToArray();
+            Program.Check(popup.IsOpen && texts.Contains("FixtureNight") && texts.Contains("Fixture alias") && !texts.Contains("FixtureIgnored"), "Offline popup did not list the expected accounts");
+            var panel = (FrameworkElement)popup.Child; panel.UpdateLayout();
+            var bitmap = new RenderTargetBitmap((int)Math.Ceiling(panel.ActualWidth), (int)Math.Ceiling(panel.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(panel);
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using (var stream = File.Create("artifacts/offline-panel.png")) encoder.Save(stream);
             popup.IsOpen = false;
         }
         finally { host.Close(); Pump(); }

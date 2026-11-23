@@ -39,10 +39,15 @@ It only **watches and organizes**. It never plays for you, never touches your lo
 - **Drag cards** to reorder them, or use `Ctrl+←` / `Ctrl+→`. Your game windows never move.
 
 ### 🌙 Health at a glance
-- The header says **All clear** or **N need attention**, plus how many clients have joined and their combined RAM.
+- The header says **All clear**, **N need attention** or **N offline**, plus how many clients have joined and their combined RAM.
 - Each card shows a colored status: **Joined**, **Joining**, **Disconnected**, **Possibly stuck joining**, **Not responding** or **Minimized**.
 - Cards that need attention turn **red**, so you can spot a dropped client from across the room.
+- **Offline** lists accounts that ran in the last 24 hours but are closed now, with their last game and when they were last seen, so you know exactly which one to open again.
 - **Activity** keeps the last 100 events (disconnects, frozen windows, missing windows, recoveries), with optional silent Windows notifications.
+
+<p align="center">
+  <img src="docs/images/offline-panel.png" alt="The Offline panel listing two closed accounts" width="380">
+</p>
 
 ### 👤 Knows which account is which
 - **Usernames, avatars and game names** appear automatically when the app can match a client's local Roblox log to its exact process.
@@ -100,6 +105,7 @@ Start with two clients to get a feel for it before scaling up.
 | **Ignore** | Hides the client and excludes it from everything else. |
 | **Refresh** | Re-detects clients and retries previews. |
 | **Restore windows** | Restores clients that were minimized outside the manager. |
+| **Offline** | Accounts that ran recently but are closed now. Copy a name, or **Forget** one you closed on purpose. |
 | **Activity** | Recent events, desktop notification toggle, Clear. |
 | **Plans** | Resource plans and the RAM limit. |
 | **Mobile** | Starts or stops phone monitoring and shows the access code. |
@@ -161,6 +167,9 @@ The game is minimized, on another virtual desktop, or not rendering. Restore it 
 
 **The name shows "Client 03" instead of the username.**
 Automatic naming needs the game to finish joining and checks logs at most every 30 seconds. Give it a minute, or click the pencil to type the name yourself.
+
+**One of my accounts closed. Which one?**
+Open **Offline**. It lists every account that ran in the last 24 hours but isn't running now, with its last game and when it was last seen. The manager can't log in for you, but it tells you exactly which account to open.
 
 **Does this stop me getting kicked for being idle?**
 No, by design. Roblox's idle disconnect still applies. The manager tells you when a client disconnects so you can deal with it.

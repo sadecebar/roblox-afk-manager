@@ -10,7 +10,17 @@ Saved ignore choices are restored before saved plans. When any saved ignored acc
 
 Applying a plan remembers it for identified included accounts. Normal exit restores their original Windows settings and retains the preference. **Reset all** restores settings and clears saved plan preferences, including offline profiles. RAM caps are not saved or re-enabled automatically. Ignoring an account restores its active settings; its preferred plan remains available if it is later included again.
 
-The file `%LOCALAPPDATA%\RobloxAfkManager\workspace.json` contains at most 128 profiles and 100 history entries, plus the desktop-notification preference. Writes replace the file atomically. Invalid files fall back to empty settings. The legacy `client-names.json` still supplies process-local aliases for unidentified clients. These files are personal data, excluded from Git and release packaging. Do not run two managers simultaneously against the same settings.
+The file `%LOCALAPPDATA%\RobloxAfkManager\workspace.json` contains at most 128 profiles (including last username, last game and last-seen time) and 100 history entries, plus the desktop-notification preference. Writes replace the file atomically. Invalid files fall back to empty settings. The legacy `client-names.json` still supplies process-local aliases for unidentified clients. These files are personal data, excluded from Git and release packaging. Do not run two managers simultaneously against the same settings.
+
+## Offline accounts
+
+Each identified profile also records the account's last known username, last game and the time it was last seen running. **Offline** lists accounts that are not running now, are not ignored, and were seen within the last 24 hours, ordered like the dashboard. It answers "which account closed?" so you know which login to open again.
+
+- Last-seen times update while an account runs and are saved when the set of running accounts changes, at least every five minutes, and on normal exit.
+- For the first two minutes after the manager starts (or until every running client is identified), the header count waits, so clients still being identified are not reported as offline. The panel notes how many running clients are still unidentified.
+- **Copy name** puts the account name on the clipboard. **Forget** stops listing an account until it runs again.
+- Avatars appear for accounts seen during the current manager session; otherwise an initial is shown.
+- The manager cannot open or log in to an account. That would require login cookies, which it never reads.
 
 ## Cards
 

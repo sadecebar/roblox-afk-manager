@@ -12,7 +12,25 @@ public interface IAccountDetailsLookup : IAccountNameLookup
     Task<IReadOnlyDictionary<ProcessIdentity, AccountDetails>> ResolveDetailsAsync(IReadOnlyList<ProcessIdentity> processes, CancellationToken cancellationToken);
 }
 
-public sealed record AccountProfile(long UserId, string? CustomName, int Order, bool Ignored, ResourcePlan? PreferredPlan);
+// Username, LastGame and LastSeen let the dashboard list recently used accounts that are no longer running.
+public sealed record AccountProfile(long UserId, string? CustomName, int Order, bool Ignored, ResourcePlan? PreferredPlan,
+    string? Username = null, string? LastGame = null, DateTimeOffset? LastSeen = null);
+public sealed record OfflineAccount(long UserId, string Name, string? Game, DateTimeOffset LastSeen);
+public static class AccountRoster
+{
+    // Accounts seen running within this window are expected back; older ones are assumed retired.
+    public static readonly TimeSpan Window = TimeSpan.FromHours(24);
+    public static IReadOnlyList<OfflineAccount> Offline(IEnumerable<AccountProfile> profiles, IReadOnlySet<long> running, DateTimeOffset now) =>
+        profiles.Where(p => !p.Ignored && p.LastSeen is { } seen && !running.Contains(p.UserId) && now - seen <= Window && seen <= now.AddMinutes(5))
+            .OrderBy(p => p.Order).ThenBy(p => p.UserId)
+            .Select(p => new OfflineAccount(p.UserId, p.CustomName ?? p.Username ?? $"Account {p.UserId}", p.LastGame, p.LastSeen!.Value))
+            .ToArray();
+    public static string Ago(DateTimeOffset seen, DateTimeOffset now)
+    {
+        var elapsed = now - seen;
+        return elapsed.TotalMinutes < 1 ? "just now" : elapsed.TotalHours < 1 ? $"{(int)elapsed.TotalMinutes} min ago" : $"{(int)elapsed.TotalHours} h {elapsed.Minutes:00} min ago";
+    }
+}
 public sealed record ActivityEntry(DateTimeOffset At, string Label, string Message, bool Warning)
 {
     public string Time => At.ToLocalTime().ToString("g");

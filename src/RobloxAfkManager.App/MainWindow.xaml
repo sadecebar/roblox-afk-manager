@@ -19,13 +19,17 @@
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0,12,0" Style="{StaticResource ShellDetail}">
-          <Border Style="{StaticResource Chip}" Height="24" Padding="10,0" ToolTip="Clients with a disconnect report, possible stuck join, minimized or unresponsive window">
+          <Border Style="{StaticResource Chip}" Height="24" Padding="10,0" ToolTip="Clients with a disconnect report, possible stuck join, minimized or unresponsive window, and recently used accounts that are no longer running">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
               <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{StaticResource SuccessBrush}" /><Style.Triggers>
-                <DataTrigger Binding="{Binding HasAttention}" Value="True"><Setter Property="Fill" Value="{StaticResource AlertBrush}" /></DataTrigger>
-                <DataTrigger Binding="{Binding IsEmpty}" Value="True"><Setter Property="Fill" Value="{StaticResource SubtleBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding HealthTone}" Value="Warn"><Setter Property="Fill" Value="{StaticResource WarningBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding HealthTone}" Value="Alert"><Setter Property="Fill" Value="{StaticResource AlertBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding HealthTone}" Value="Idle"><Setter Property="Fill" Value="{StaticResource SubtleBrush}" /></DataTrigger>
               </Style.Triggers></Style></Ellipse.Style></Ellipse>
-              <TextBlock Text="{Binding HealthSummary}" VerticalAlignment="Center" FontWeight="SemiBold"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource TextBrush}" /><Style.Triggers><DataTrigger Binding="{Binding HasAttention}" Value="True"><Setter Property="Foreground" Value="{StaticResource AlertBrush}" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+              <TextBlock Text="{Binding HealthSummary}" VerticalAlignment="Center" FontWeight="SemiBold"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource TextBrush}" /><Style.Triggers>
+                <DataTrigger Binding="{Binding HealthTone}" Value="Warn"><Setter Property="Foreground" Value="{StaticResource WarningBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding HealthTone}" Value="Alert"><Setter Property="Foreground" Value="{StaticResource AlertBrush}" /></DataTrigger>
+              </Style.Triggers></Style></TextBlock.Style></TextBlock>
             </StackPanel>
           </Border>
           <Border Style="{StaticResource Chip}" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="Clients whose matched log reports a completed join">
@@ -43,6 +47,15 @@
               <TextBlock Text="Activity" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" />
               <Border Style="{StaticResource CountBadge}" Background="{StaticResource AlertBrush}" Visibility="{Binding HasUnreadAlerts, Converter={StaticResource BoolVisibility}}">
                 <TextBlock Text="{Binding UnreadAlerts}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+            </StackPanel>
+          </Button>
+          <Button x:Name="OfflineButton" Click="OfflineButton_Click" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" ToolTip="Accounts that ran in the last 24 hours but are closed now" AutomationProperties.Name="Offline accounts">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE716;" Style="{StaticResource Glyph}" />
+              <TextBlock Text="Offline" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" />
+              <Border Style="{StaticResource CountBadge}" Background="{StaticResource WarningBrush}" Visibility="{Binding HasOffline, Converter={StaticResource BoolVisibility}}">
+                <TextBlock Text="{Binding OfflineCount}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
             </StackPanel>
           </Button>
@@ -221,6 +234,49 @@
             <TextBlock Text="{Binding ProfileSummary}" Foreground="{StaticResource SubtleBrush}" FontSize="11" VerticalAlignment="Center" />
             <Button Grid.Column="1" Content="Restore original placements" Command="{Binding RestoreOriginalsCommand}" Style="{StaticResource CompactButton}" ToolTip="Restore saved placements for visible clients. Ignored clients are untouched." />
           </Grid>
+        </StackPanel>
+      </Border>
+    </Popup>
+
+    <!-- Offline accounts -->
+    <Popup x:Name="OfflinePopup" PlacementTarget="{Binding ElementName=OfflineButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+      <Border Style="{StaticResource PopupSurface}" Width="380">
+        <StackPanel>
+          <TextBlock Text="Offline accounts" Style="{StaticResource PopupTitle}" />
+          <TextBlock Text="Ran in the last 24 hours, closed now. Open these to get every account back." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,14" />
+          <Border Background="{StaticResource WarningSoftBrush}" CornerRadius="8" Padding="10,8" Margin="0,0,0,12" Visibility="{Binding HasUnidentified, Converter={StaticResource BoolVisibility}}">
+            <TextBlock Text="{Binding UnidentifiedHint}" Foreground="{StaticResource WarningBrush}" FontSize="11" TextWrapping="Wrap" />
+          </Border>
+          <Border Background="{StaticResource InputBrush}" CornerRadius="8" Padding="12,18">
+            <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding OfflineAccounts.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></Border.Style>
+            <StackPanel HorizontalAlignment="Center">
+              <TextBlock Text="&#xE708;" Style="{StaticResource Glyph}" FontSize="18" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6" />
+              <TextBlock Text="Everyone's here. If an account closes, it shows up in this list." Foreground="{StaticResource MutedBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+          <ScrollViewer MaxHeight="340" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding OfflineAccounts}"><ItemsControl.ItemTemplate><DataTemplate>
+              <Border Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,6">
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                  <Grid Width="30" Height="30" Margin="0,0,10,0" VerticalAlignment="Center">
+                    <Ellipse Fill="{StaticResource HoverBrush}" />
+                    <TextBlock Text="{Binding AvatarFallback}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" />
+                    <Ellipse Opacity="0.55"><Ellipse.Fill><ImageBrush ImageSource="{Binding Avatar}" Stretch="UniformToFill" /></Ellipse.Fill></Ellipse>
+                    <Ellipse Width="10" Height="10" Fill="{StaticResource WarningBrush}" Stroke="{StaticResource RaisedBrush}" StrokeThickness="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                  </Grid>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                    <TextBlock Text="{Binding Details}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Details}" />
+                  </StackPanel>
+                  <Button Grid.Column="2" Click="CopyOfflineName_Click" Style="{StaticResource ToolbarButton}" Width="30" MinHeight="28" Padding="0" Margin="8,0,0,0" ToolTip="Copy account name" AutomationProperties.Name="{Binding Name, StringFormat=Copy name {0}}">
+                    <TextBlock Text="&#xE8C8;" Style="{StaticResource Glyph}" FontSize="12" />
+                  </Button>
+                  <Button Grid.Column="3" Content="Forget" Command="{Binding DataContext.ForgetOfflineCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource ToolbarButton}" MinHeight="28" Padding="8,2" Margin="2,0,0,0" ToolTip="Stop listing this account until it runs again" AutomationProperties.Name="{Binding Name, StringFormat=Forget {0}}" />
+                </Grid>
+              </Border>
+            </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+          </ScrollViewer>
+          <TextBlock Text="Ignored accounts never appear here. Forget hides an account until it runs again." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0" />
         </StackPanel>
       </Border>
     </Popup>
