@@ -59,6 +59,9 @@
               </Border>
             </StackPanel>
           </Button>
+          <Button x:Name="ArrangeButton" Click="ArrangeButton_Click" IsEnabled="{Binding IsIdle}" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" ToolTip="Tile clients on a monitor and maximize your main client" AutomationProperties.Name="Arrange windows">
+            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE80A;" Style="{StaticResource Glyph}" /><TextBlock Text="Arrange" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" /></StackPanel>
+          </Button>
           <Button x:Name="ResourceButton" Click="ResourceButton_Click" IsEnabled="{Binding IsIdle}" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" ToolTip="{Binding ResourcePlanSummary}" AutomationProperties.Name="Resource plans">
             <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" Style="{StaticResource Glyph}" /><TextBlock Text="Plans" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" /></StackPanel>
           </Button>
@@ -196,6 +199,34 @@
       </Border>
     </Popup>
 
+    <!-- Arrange -->
+    <Popup x:Name="ArrangePopup" PlacementTarget="{Binding ElementName=ArrangeButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+      <Border Style="{StaticResource PopupSurface}" Width="350">
+        <StackPanel>
+          <TextBlock Text="Arrange windows" Style="{StaticResource PopupTitle}" />
+          <TextBlock Text="Grid monitor" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" />
+          <ComboBox ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" DisplayMemberPath="Label" AutomationProperties.Name="Grid monitor" />
+          <TextBlock Text="Layout" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" />
+          <ComboBox ItemsSource="{Binding Layouts}" SelectedItem="{Binding SelectedLayout}" DisplayMemberPath="Label" AutomationProperties.Name="Grid layout" />
+          <TextBlock Text="Main client (maximized on the primary monitor)" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" TextWrapping="Wrap" />
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <ComboBox ItemsSource="{Binding Clients}" SelectedItem="{Binding MainClient}" DisplayMemberPath="Label" AutomationProperties.Name="Main client" />
+            <Button Grid.Column="1" Content="None" Click="ClearMain_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
+          </Grid>
+          <TextBlock Text="{Binding MainSummary}" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,8,0,14" />
+          <Button Content="Arrange now" Command="{Binding ArrangeCommand}" Click="ArrangeNow_Click" Style="{StaticResource CompactPrimaryButton}" />
+          <Border Style="{StaticResource Divider}" Margin="0,14,0,12" />
+          <TextBlock Text="Remember positions" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Text="Put the windows where you want them, then save. Each account opens in its own spot from now on." TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,4,0,8" />
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <Button Content="Save current positions" Command="{Binding SaveLayoutCommand}" Style="{StaticResource CompactButton}" />
+            <Button Grid.Column="1" Content="Clear" Command="{Binding ClearLayoutCommand}" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
+          </Grid>
+          <TextBlock Text="{Binding LayoutSummary2}" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,6,0,0" />
+        </StackPanel>
+      </Border>
+    </Popup>
+
     <!-- Ignored -->
     <Popup x:Name="IgnoredPopup" PlacementTarget="{Binding ElementName=IgnoredButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True"
            DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
@@ -277,6 +308,27 @@
             </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
           </ScrollViewer>
           <TextBlock Text="Ignored accounts never appear here. Forget hides an account until it runs again." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0" />
+          <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
+          <TextBlock Text="Saved logins" Style="{StaticResource PopupTitle}" />
+          <ItemsControl ItemsSource="{Binding SavedLogins}" Margin="0,8,0,0"><ItemsControl.ItemTemplate><DataTemplate>
+            <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="8,0" />
+              <Button Grid.Column="2" Content="Open" Command="{Binding DataContext.OpenLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource CompactButton}" MinHeight="26" Padding="10,2" Margin="0,0,4,0" AutomationProperties.Name="{Binding Name, StringFormat=Open {0}}" />
+              <Button Grid.Column="3" Content="Login" Click="LoginRow_Click" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" Margin="0,0,4,0" ToolTip="Open this account's own browser profile. If its session expired, log in once; otherwise this just refreshes the saved login." AutomationProperties.Name="{Binding Name, StringFormat=Log in again as {0}}" />
+              <Button Grid.Column="4" Content="Remove" Command="{Binding DataContext.RemoveLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" AutomationProperties.Name="{Binding Name, StringFormat=Remove saved login {0}}" />
+            </Grid>
+          </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+          <TextBlock Text="Game to open (roblox.com/games/… link or place id)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
+          <TextBox Text="{Binding GameLink, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Game link or place id" />
+          <CheckBox Content="Restart an account when Roblox ends its login" IsChecked="{Binding AutoRecover}" Margin="0,8,0,0" ToolTip="When a client's login is ended (it freezes, then gets kicked), the manager restarts just that account from its saved login. At most once per 20 minutes per account." />
+          <Button Content="{Binding OpenClosedLabel}" Command="{Binding OpenClosedCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,8,0,0" ToolTip="Starts the game below for every saved account that isn't running, about 10 seconds apart." />
+          <Button Content="Log in to add an account…" Click="LoginNew_Click" Style="{StaticResource CompactButton}" Margin="0,8,0,0" ToolTip="Opens Roblox's login page. Log in once and the account is saved; no cookie copying." />
+          <TextBlock Text="Or add one by pasting its .ROBLOSECURITY cookie. It is stored encrypted for this Windows user and only sent to roblox.com." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,6" />
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <PasswordBox x:Name="CookieBox" AutomationProperties.Name="Session cookie" />
+            <Button Grid.Column="1" Content="Add" Click="AddLogin_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
+          </Grid>
         </StackPanel>
       </Border>
     </Popup>

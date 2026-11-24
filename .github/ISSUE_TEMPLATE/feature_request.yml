@@ -16,4 +16,4 @@ body:
   - type: markdown
     attributes:
       value: |
-        Out of scope by design: gameplay automation, auto-rejoin or account launching (these need login cookies), anti-idle tricks, memory reading or code injection.
+        Out of scope by design: gameplay automation, handling passwords, anti-idle tricks, memory reading or code injection.

@@ -13,7 +13,7 @@ The areas that matter most:
 - The mobile dashboard server: authentication, access codes, the loopback-only binding and the read-only routes.
 - Process identity checks before window or resource changes (for example, acting on a reused process ID).
 - Handling of data from Roblox log files and public Roblox APIs.
-- Anything that could leak local settings, logs or screenshots.
+- Anything that could leak local settings, logs, screenshots or the encrypted saved logins (`logins.dat`).
 
 ## Supported versions
 

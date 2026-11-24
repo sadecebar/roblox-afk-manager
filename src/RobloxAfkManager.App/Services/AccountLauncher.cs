@@ -1,0 +1,185 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
+
+namespace RobloxAfkManager.App.Services;
+
+public sealed record SavedLogin(long UserId, string Username);
+
+// Stores each account's session cookie encrypted with Windows DPAPI (current user only).
+// The cookie is only ever sent to roblox.com, never logged, and never written in clear text.
+public sealed class LoginVault(string? path = null)
+{
+    private sealed record Entry(long UserId, string Username, string Cipher);
+    private readonly string path = path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "logins.dat");
+    private List<Entry> entries = Load(path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "logins.dat"));
+    public IReadOnlyList<SavedLogin> Logins => entries.Select(e => new SavedLogin(e.UserId, e.Username)).ToArray();
+
+    public void Save(long userId, string username, string cookie)
+    {
+        entries.RemoveAll(e => e.UserId == userId);
+        entries.Add(new(userId, username, Convert.ToBase64String(Protect(Encoding.UTF8.GetBytes(cookie)))));
+        Write();
+    }
+    public void Remove(long userId) { entries.RemoveAll(e => e.UserId == userId); Write(); }
+    public string? Cookie(long userId)
+    {
+        var entry = entries.FirstOrDefault(e => e.UserId == userId);
+        if (entry is null) return null;
+        try { return Encoding.UTF8.GetString(Unprotect(Convert.FromBase64String(entry.Cipher))); }
+        catch (Exception ex) when (ex is CryptographicException or FormatException) { return null; }
+    }
+
+    private void Write()
+    {
+        string full = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        string temporary = full + ".tmp";
+        try { File.WriteAllText(temporary, JsonSerializer.Serialize(entries)); File.Move(temporary, full, true); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+    private static List<Entry> Load(string path)
+    {
+        try { return File.Exists(path) && new FileInfo(path).Length < 1_000_000 ? JsonSerializer.Deserialize<List<Entry>>(File.ReadAllText(path)) ?? [] : []; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return []; }
+    }
+
+    internal sealed class CryptographicException(string message) : Exception(message);
+    [StructLayout(LayoutKind.Sequential)] private struct Blob { public int Size; public nint Data; }
+    [DllImport("crypt32.dll", SetLastError = true)] private static extern bool CryptProtectData(ref Blob input, string? description, nint entropy, nint reserved, nint prompt, int flags, out Blob output);
+    [DllImport("crypt32.dll", SetLastError = true)] private static extern bool CryptUnprotectData(ref Blob input, nint description, nint entropy, nint reserved, nint prompt, int flags, out Blob output);
+    [DllImport("kernel32.dll")] private static extern nint LocalFree(nint memory);
+    private static byte[] Transform(byte[] data, bool protect)
+    {
+        var handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+        try
+        {
+            var input = new Blob { Size = data.Length, Data = handle.AddrOfPinnedObject() };
+            Blob output;
+            bool ok = protect ? CryptProtectData(ref input, null, 0, 0, 0, 1 /* UI forbidden */, out output) : CryptUnprotectData(ref input, 0, 0, 0, 0, 1, out output);
+            if (!ok) throw new CryptographicException("Windows could not protect or unprotect the saved login.");
+            var bytes = new byte[output.Size];
+            Marshal.Copy(output.Data, bytes, 0, output.Size);
+            LocalFree(output.Data);
+            return bytes;
+        }
+        finally { handle.Free(); }
+    }
+    internal static byte[] Protect(byte[] data) => Transform(data, true);
+    internal static byte[] Unprotect(byte[] data) => Transform(data, false);
+}
+
+// Starts Roblox as a specific account using Roblox's own one-time authentication ticket flow.
+public sealed class AccountLauncher : IDisposable
+{
+    private static readonly HttpClient Http = CreateHttp();
+    // Identifies itself plainly as this tool: no browser or Roblox-client disguise.
+    private static HttpClient CreateHttp()
+    {
+        var client = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(15) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("RobloxAfkManager/0.10 (open-source account manager)");
+        return client;
+    }
+
+    // Starts one account and returns the new client's process id. Only "Roblox never started" is an error.
+    public async Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null)
+    {
+        var before = RobloxProcessIds();
+        await LaunchAsync(cookie, placeId, token, readyTicket);
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        int[] fresh = [];
+        while (DateTime.UtcNow < deadline && fresh.Length == 0)
+        { await Task.Delay(500, token); fresh = RobloxProcessIds().Except(before).ToArray(); }
+        if (fresh.Length == 0) throw new InvalidOperationException("Roblox didn't start within a minute.");
+        return fresh[0];
+    }
+
+    private static int[] RobloxProcessIds()
+    {
+        var ids = new List<int>();
+        foreach (var process in Process.GetProcessesByName("RobloxPlayerBeta")) using (process) ids.Add(process.Id);
+        return [.. ids];
+    }
+
+    public static string? CleanCookie(string? raw)
+    {
+        string value = (raw ?? "").Trim().Trim('"');
+        int mark = value.IndexOf(".ROBLOSECURITY=", StringComparison.OrdinalIgnoreCase);
+        if (mark >= 0) value = value[(mark + 15)..];
+        int end = value.IndexOf(';'); if (end >= 0) value = value[..end];
+        value = value.Trim();
+        return value.Length is > 100 and < 4000 && value.All(c => c > 32 && c < 127 && c != ';' && c != ',') ? value : null;
+    }
+
+    public async Task<SavedLogin> IdentifyAsync(string cookie, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://users.roblox.com/v1/users/authenticated");
+        request.Headers.TryAddWithoutValidation("Cookie", ".ROBLOSECURITY=" + cookie);
+        using var response = await Http.SendAsync(request, token);
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Roblox rejected that session. The cookie may be expired or copied wrong.");
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+        return new(json.RootElement.GetProperty("id").GetInt64(), json.RootElement.GetProperty("name").GetString() ?? "Account");
+    }
+
+    public Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token) => TicketAsync(cookie, placeId, token);
+
+    public async Task LaunchAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null)
+    {
+        string ticket = readyTicket ?? await TicketAsync(cookie, placeId, token);
+        string tracker = Random.Shared.NextInt64(100_000_000_000, 130_000_000_000).ToString();
+        string launcher = Uri.EscapeDataString($"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGame&browserTrackerId={tracker}&placeId={placeId}&isPlayTogetherGame=false");
+        string uri = $"roblox-player:1+launchmode:play+gameinfo:{ticket}+launchtime:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}+placelauncherurl:{launcher}+browsertrackerid:{tracker}+robloxLocale:en_us+gameLocale:en_us+channel:+LaunchExp:InApp";
+        // Never go through the roblox-player: protocol handler. That is RobloxPlayerInstaller.exe, which treats the
+        // launch as an install/update and terminates every running RobloxPlayerBeta.exe. Start the client itself.
+        var info = new ProcessStartInfo(await ClientExecutableAsync(token)) { UseShellExecute = false };
+        info.ArgumentList.Add(uri);
+        Process.Start(info)?.Dispose();
+    }
+
+    // The version Roblox's servers currently accept, then a version that is already running, then the newest on disk.
+    public static async Task<string> ClientExecutableAsync(CancellationToken token)
+    {
+        string versions = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Roblox", "Versions");
+        try
+        {
+            using var response = await Http.GetAsync("https://clientsettingscdn.roblox.com/v2/client-version/WindowsPlayer", token);
+            if (response.IsSuccessStatusCode)
+            {
+                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+                string? guid = json.RootElement.GetProperty("clientVersionUpload").GetString();
+                if (guid is { Length: > 0 } && guid.All(c => char.IsLetterOrDigit(c) || c == '-') && Path.Combine(versions, guid, "RobloxPlayerBeta.exe") is { } current && File.Exists(current)) return current;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException) { }
+        foreach (var process in Process.GetProcessesByName("RobloxPlayerBeta"))
+            using (process) { try { if (process.MainModule?.FileName is { } running && File.Exists(running)) return running; } catch (Exception ex) when (ex is Win32Exception or InvalidOperationException) { } }
+        var newest = Directory.Exists(versions)
+            ? new DirectoryInfo(versions).EnumerateDirectories().Select(d => Path.Combine(d.FullName, "RobloxPlayerBeta.exe")).Where(File.Exists).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
+            : null;
+        return newest ?? throw new InvalidOperationException("Roblox isn't installed for this Windows user. Install it from roblox.com once, then try again.");
+    }
+
+    private static async Task<string> TicketAsync(string cookie, long placeId, CancellationToken token)
+    {
+        string? csrf = null;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://auth.roblox.com/v1/authentication-ticket") { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+            request.Headers.TryAddWithoutValidation("Cookie", ".ROBLOSECURITY=" + cookie);
+            request.Headers.TryAddWithoutValidation("Referer", $"https://www.roblox.com/games/{placeId}");
+            if (csrf is not null) request.Headers.TryAddWithoutValidation("x-csrf-token", csrf);
+            using var response = await Http.SendAsync(request, token);
+            if (response.StatusCode == HttpStatusCode.Forbidden && response.Headers.TryGetValues("x-csrf-token", out var tokens)) { csrf = tokens.First(); continue; }
+            if (response.Headers.TryGetValues("rbx-authentication-ticket", out var ticket) && ticket.First() is { Length: > 0 } value) return value;
+            throw new InvalidOperationException(response.StatusCode == HttpStatusCode.Unauthorized ? "The saved session has expired. Add this account again." : $"Roblox did not give a launch ticket ({(int)response.StatusCode}).");
+        }
+        throw new InvalidOperationException("Roblox did not accept the launch request.");
+    }
+
+    public void Dispose() { }
+}

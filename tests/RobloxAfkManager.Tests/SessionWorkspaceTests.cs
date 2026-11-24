@@ -23,6 +23,16 @@ internal static class SessionWorkspaceTests
             Program.Check(SessionLogParser.Read(Join(Now.AddHours(-2)) + "\n" + Join(Now.AddHours(2)), Process, Now).Phase == SessionPhase.Unknown);
             Program.Check(SessionLogParser.Read("userid:77 placeid:8", Process, Now).UserId is null);
         });
+        test("Lost logins show up as recent HTTP 401 bursts, never from game output or old lines", () =>
+        {
+            string Http401(DateTimeOffset at) => Line(at, "Output", "x").Replace("[FLog::Output]", "[DFLog::HttpTraceError]") + " HttpResponse(#1) status:401 Unauthorized url:{ https://apis.roblox.com/x }";
+            string burst = string.Join(Environment.NewLine, Enumerable.Range(0, 40).Select(i => Http401(Now.AddSeconds(-i))));
+            Program.Check(SessionLogParser.Read(Join(Now.AddMinutes(-8)) + Environment.NewLine + burst, Process, Now).AuthFailures == 40);
+            string old = string.Join(Environment.NewLine, Enumerable.Range(0, 40).Select(i => Http401(Now.AddMinutes(-30).AddSeconds(i))));
+            Program.Check(SessionLogParser.Read(Join(Now.AddMinutes(-40)) + Environment.NewLine + old, Process, Now).AuthFailures == 0);
+            string game = string.Join(Environment.NewLine, Enumerable.Range(0, 40).Select(i => Line(Now, "Output", "status:401 [DFLog::HttpTraceError]")));
+            Program.Check(SessionLogParser.Read(Join(Now.AddMinutes(-8)) + Environment.NewLine + game, Process, Now).AuthFailures == 0);
+        });
         test("Session parser resets duration on rejoin and distinguishes joining from a completed join", () =>
         {
             string text = Join(Now.AddMinutes(-20)) + "\n" + Line(Now.AddMinutes(-2), "Network", "Client:Disconnect");

@@ -5,7 +5,7 @@ namespace RobloxAfkManager.Core;
 
 public enum SessionPhase { Unknown, Joining, Joined, Disconnected }
 public sealed record SessionReport(long? UserId, long? PlaceId, long? UniverseId, SessionPhase Phase,
-    DateTimeOffset? JoinedAt, DateTimeOffset? EventAt, DateTimeOffset CheckedAt);
+    DateTimeOffset? JoinedAt, DateTimeOffset? EventAt, DateTimeOffset CheckedAt, int AuthFailures = 0);
 public sealed record AccountDetails(SessionReport Session, string? Username, string? GameName, byte[]? AvatarPng);
 public interface IAccountDetailsLookup : IAccountNameLookup
 {
@@ -14,7 +14,7 @@ public interface IAccountDetailsLookup : IAccountNameLookup
 
 // Username, LastGame and LastSeen let the dashboard list recently used accounts that are no longer running.
 public sealed record AccountProfile(long UserId, string? CustomName, int Order, bool Ignored, ResourcePlan? PreferredPlan,
-    string? Username = null, string? LastGame = null, DateTimeOffset? LastSeen = null);
+    string? Username = null, string? LastGame = null, DateTimeOffset? LastSeen = null, SavedPlacement? Window = null);
 public sealed record OfflineAccount(long UserId, string Name, string? Game, DateTimeOffset LastSeen);
 public static class AccountRoster
 {
@@ -52,14 +52,30 @@ public sealed class MemoryWorkspaceStore : IWorkspaceStore
 // Text emitted by a game through FLog::Output is never treated as session evidence.
 public static partial class SessionLogParser
 {
+    // True for an engine-level "HTTP 401" trace line. The tag must be the line's first tag, so text a game prints can't imitate it.
+    public static bool TryReadAuthFailure(string line, out DateTimeOffset at)
+    {
+        at = default;
+        return Http401().Match(line) is { Success: true } m
+            && DateTimeOffset.TryParse(m.Groups[1].Value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out at);
+    }
+
     public static SessionReport Read(string text, ProcessIdentity process, DateTimeOffset checkedAt)
     {
         long? user = null, place = null, universe = null;
         DateTimeOffset? joined = null, last = null;
         SessionPhase phase = SessionPhase.Unknown;
         var start = new DateTimeOffset(new DateTime(process.StartTimeUtcTicks, DateTimeKind.Utc));
+        int authFailures = 0;
         foreach (var line in text.Split('\n'))
         {
+            // Engine-level HTTP traces (not text a game can print): a healthy client never sees 401s, a client whose
+            // login was ended sees them in bursts. Only the last ten minutes count.
+            if (TryReadAuthFailure(line, out var seen))
+            {
+                if (seen >= start.AddSeconds(-2) && seen <= checkedAt.AddMinutes(1) && checkedAt - seen <= TimeSpan.FromMinutes(10)) authFailures++;
+                continue;
+            }
             var marker = Marker().Match(line);
             if (!marker.Success || !DateTimeOffset.TryParse(marker.Groups[1].Value, CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var at) || at < start.AddSeconds(-2) || at > checkedAt.AddMinutes(1)) continue;
@@ -82,10 +98,13 @@ public static partial class SessionLogParser
             else if (tag == "GameJoinUtil" && message.StartsWith("GameJoinUtil::joinGamePostStandard:", StringComparison.Ordinal))
             { phase = SessionPhase.Joining; joined = null; place = universe = null; last = at; }
         }
-        return new(user, place, universe, phase, joined, last, checkedAt);
+        return new(user, place, universe, phase, joined, last, checkedAt, authFailures);
     }
     [GeneratedRegex(@"^\s*(\d{4}-\d{2}-\d{2}T[^,\s]+),[^\r\n\[]*\[FLog::(GameJoinLoadTime|Network|GameJoinUtil)\]\s*(.*)$", RegexOptions.CultureInvariant, 100)]
     private static partial Regex Marker();
+    // The engine tag must be the line's first tag, so text a game prints can't imitate it.
+    [GeneratedRegex(@"^\s*(\d{4}-\d{2}-\d{2}T[^,\s]+),[^\r\n\[]*\[DFLog::HttpTraceError\][^\r\n]*\bstatus:401\b", RegexOptions.CultureInvariant, 100)]
+    private static partial Regex Http401();
     [GeneratedRegex(@"\b(userid|placeid|universeid):\s*([1-9][0-9]{0,18})(?=\s|,|$)", RegexOptions.CultureInvariant, 100)]
     private static partial Regex Fields();
 }

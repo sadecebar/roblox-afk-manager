@@ -31,7 +31,8 @@ public sealed class WorkspaceStore(string? path = null) : IWorkspaceStore
             (p.PreferredPlan is null || Enum.IsDefined(p.PreferredPlan.Value)))
             .Select(p => p with { CustomName = AccountNames.Normalize(p.CustomName), Username = AccountNames.Normalize(p.Username),
                 LastGame = p.LastGame is { Length: > 0 and <= 120 } game ? game : null,
-                LastSeen = p.LastSeen is { } seen && seen <= DateTimeOffset.UtcNow.AddDays(1) ? seen : null }).DistinctBy(p => p.UserId).Take(128).ToArray(),
+                LastSeen = p.LastSeen is { } seen && seen <= DateTimeOffset.UtcNow.AddDays(1) ? seen : null,
+                Window = p.Window is { Bounds: { Width: >= 200 and <= 20000, Height: >= 150 and <= 20000, X: >= -40000 and <= 40000, Y: >= -40000 and <= 40000 } } ? p.Window : null }).DistinctBy(p => p.UserId).Take(128).ToArray(),
         (settings.History ?? []).Where(e => e is not null && e.Label is { Length: <= 64 } && e.Message is { Length: <= 240 })
             .OrderByDescending(e => e.At).Take(100).ToArray(), settings.Notifications);
 }

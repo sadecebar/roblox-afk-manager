@@ -46,6 +46,30 @@ public partial class MainWindow : Window
         IgnoredPopup.IsOpen = ResourcePopup.IsOpen = MobilePopup.IsOpen = NamePopup.IsOpen = ActivityPopup.IsOpen = OfflinePopup.IsOpen = false;
         target.IsOpen = open;
     }
+    private async void LoginNew_Click(object sender, RoutedEventArgs e) => await RunLoginAsync(null);
+    private async void LoginRow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SavedLoginView row }) await RunLoginAsync(row.UserId, row.Name);
+    }
+    private async Task RunLoginAsync(long? userId, string? username = null)
+    {
+        OfflinePopup.IsOpen = false;
+        var window = new LoginWindow(userId) { Owner = this };
+        window.ShowDialog();
+        if (window.Cookie is { } cookie && window.Login is { } login)
+        {
+            if (await viewModel.AddLoginAsync(cookie)) await LoginWindow.FinalizeFolderAsync(window.FolderPath, login.UserId);
+        }
+        else if (window.IsNewProfile) await LoginWindow.DiscardAsync(window.FolderPath); // closed without logging in
+    }
+    private async void AddLogin_Click(object sender, RoutedEventArgs e)
+    {
+        string cookie = CookieBox.Password; CookieBox.Clear();
+        await viewModel.AddLoginAsync(cookie);
+    }
+    private void ArrangeButton_Click(object sender, RoutedEventArgs e) => TogglePanel(ArrangePopup);
+    private void ClearMain_Click(object sender, RoutedEventArgs e) => viewModel.MainClient = null;
+    private void ArrangeNow_Click(object sender, RoutedEventArgs e) => ArrangePopup.IsOpen = false;
     private void IgnoredButton_Click(object sender, RoutedEventArgs e) => TogglePanel(IgnoredPopup);
     private void ResourceButton_Click(object sender, RoutedEventArgs e) => TogglePanel(ResourcePopup);
     private void MobileButton_Click(object sender, RoutedEventArgs e) => TogglePanel(MobilePopup);

@@ -26,7 +26,6 @@ if ($Publish) {
     & $sdk publish src\RobloxAfkManager.App\RobloxAfkManager.App.csproj -c $Configuration --no-restore --self-contained false -o $destination -p:DebugType=None -p:DebugSymbols=false
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination $destination
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Run.cmd') -Destination $destination
     # Ship only repository docs; local notes ignored by Git never enter a package.
     $docFiles = @(& git -C $PSScriptRoot ls-files -- docs 2>$null)
     if ($LASTEXITCODE -ne 0 -or $docFiles.Count -eq 0) { $docFiles = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'docs') -File -Recurse | ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) }) }

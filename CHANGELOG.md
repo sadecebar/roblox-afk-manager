@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.10.0: Open accounts, arrange windows
+
+Optional, and off until you save a login. Nothing here stores a password.
+
+### New
+- **Open closed.** One button (plus a per-account **Open**) starts every saved account that isn't running, 10 seconds apart, in the game you set.
+- **Log in to add an account.** Roblox's own login page in an embedded browser. You type your own password; only the resulting session is saved, encrypted for your Windows user. You can also paste a cookie.
+- **Game to open.** Paste a game link or place id in the Offline panel.
+- **Arrange.** Grid on the monitor you choose, with an optional maximized main client.
+- **Save positions.** Each account's window goes back to its saved spot when reopened.
+- **Restart an account when Roblox ends its login** (off by default). Detects a burst of 401 errors in the client's log, then restarts only that account. At most 4 per hour.
+
+### Details
+- Accounts are started by running `RobloxPlayerBeta.exe` directly. The `roblox-player:` link is never used, because its installer closes every running client.
+- Adds one dependency, Microsoft.Web.WebView2, for the login window.
+- Web requests identify themselves honestly as this tool.
+- Removed the launcher script `Run.cmd`. Run `RobloxAfkManager.exe` directly.
+
 ## v0.9.0: Offline accounts
 
 One of your accounts closed and you can't tell which? The manager now remembers.
@@ -18,7 +36,6 @@ One of your accounts closed and you can't tell which? The manager now remembers.
 
 ### Good to know
 - Tracking starts once you run v0.9.0. Accounts that closed before you upgraded can't be listed.
-- The manager still can't open or log in to accounts for you. That would need your login cookies, which it never touches.
 
 ## v0.8.0: First public release
 

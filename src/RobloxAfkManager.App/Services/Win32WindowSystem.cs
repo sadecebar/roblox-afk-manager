@@ -191,6 +191,24 @@ public sealed class Win32WindowSystem(IAppLog log) : IWindowSystem
         WaitFor(id, () => IsNormal(id) && ReadBounds(id) == bounds, "The client rejected the requested size or position.");
     }
 
+    public void Maximize(WindowIdentity id, PixelRect monitorArea)
+    {
+        Ensure(id);
+        if (IsHungAppWindow(id.Handle)) throw new InvalidOperationException($"Client PID {id.ProcessId} is not responding.");
+        if (IsIconic(id.Handle) || IsZoomed(id.Handle))
+        {
+            if (!ShowWindowAsync(id.Handle, ShowNormalNoActivate)) throw LastError("Restore normal window state");
+            WaitFor(id, () => IsNormal(id), "The client did not leave its minimized/maximized state.");
+        }
+        // Windows maximizes onto the monitor the window currently sits on, so move it there first.
+        if (!SetWindowPos(id.Handle, 0, monitorArea.X + 40, monitorArea.Y + 40, Math.Max(400, monitorArea.Width / 2), Math.Max(300, monitorArea.Height / 2), NoActivate | NoZOrder | NoOwnerZOrder | AsyncWindowPos))
+            throw LastError("Move window to main monitor");
+        Thread.Sleep(120);
+        Ensure(id);
+        if (!ShowWindowAsync(id.Handle, 3 /* SW_MAXIMIZE */)) throw LastError("Maximize window");
+        WaitFor(id, () => IsZoomed(id.Handle), "The client did not maximize.");
+    }
+
     public void Restore(WindowIdentity id, Placement placement)
     {
         Ensure(id);
@@ -216,6 +234,14 @@ public sealed class Win32WindowSystem(IAppLog log) : IWindowSystem
         Ensure(id);
         // Respect Windows foreground restrictions. No AttachThreadInput or fake keystrokes.
         return SetForegroundWindow(id.Handle);
+    }
+
+    public void Close(WindowIdentity id)
+    {
+        if (!IsCurrent(id)) return; // same pid + start time + image check as every other operation
+        using var process = Process.GetProcessById(id.ProcessId);
+        process.CloseMainWindow();
+        if (!process.WaitForExit(4000)) { process.Kill(); process.WaitForExit(5000); }
     }
 
     public void RestoreForPreview(WindowIdentity id)

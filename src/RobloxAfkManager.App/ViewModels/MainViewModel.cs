@@ -56,7 +56,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public AsyncCommand ApplyMemoryCapCommand { get; }
     public AsyncCommand ResetMemoryCapCommand { get; }
     public IReadOnlyList<ResourcePlan> ResourcePlans { get; } = Enum.GetValues<ResourcePlan>();
-    private IEnumerable<AsyncCommand> Commands => [DetectCommand, ArrangeCommand, FocusCommand, FocusClientCommand, PrepareDashboardCommand, UnignoreClientCommand, RestoreGridCommand, RestoreOriginalsCommand, ApplyResourcePlanCommand, ResetResourcePlanCommand, ApplyMemoryCapCommand, ResetMemoryCapCommand];
+    private IEnumerable<AsyncCommand> Commands => [DetectCommand, ArrangeCommand, FocusCommand, FocusClientCommand, PrepareDashboardCommand, UnignoreClientCommand, RestoreGridCommand, RestoreOriginalsCommand, ApplyResourcePlanCommand, ResetResourcePlanCommand, ApplyMemoryCapCommand, ResetMemoryCapCommand, SaveLayoutCommand, ClearLayoutCommand, OpenClosedCommand, OpenLoginCommand];
 
     public MainViewModel(IWindowSystem? windowSystem = null, IAppLog? appLog = null, IProcessResourceSystem? resourceSystem = null, IWorkingSetSystem? workingSetSystem = null,
         IAccountNameLookup? accountNameLookup = null, IClientNameStore? clientNameStore = null, IWorkspaceStore? workspaceStore = null)
@@ -67,8 +67,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Remote = new(windows.IsCurrent, log);
         resources = new(resourceSystem ?? new Win32ProcessResources(), log);
         memoryCaps = new(workingSetSystem ?? new Win32ProcessResources(), log);
-        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster();
-        selectedLayout = Layouts[0];
+        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster(); InitializeLaunch(); InitializePlacements();
+        selectedLayout = Layouts[1];
         DetectCommand = new(() => RefreshAsync(true), () => !Busy, HandleError);
         ArrangeCommand = new(ArrangeAsync, () => !Busy && IncludedCount > 0 && SelectedMonitor is not null, HandleError);
         FocusCommand = new(() => { var id = SelectedClient!.Identity; return RunOperation(() => manager.Focus(id)); }, () => !Busy && SelectedClient is not null, HandleError);
@@ -160,6 +160,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public string LogPath => (log as FileLog)?.DirectoryPath ?? "";
     public MonitorInfo? SelectedMonitor { get => selectedMonitor; set { if (Set(ref selectedMonitor, value)) { Raise(nameof(MonitorDetails)); ArrangeCommand.Notify(); } } }
     public string MonitorDetails => SelectedMonitor?.Details ?? "No monitor available";
+    // The account you play on: maximized with its border on the primary monitor, outside the grid.
+    public ClientTileViewModel? MainClient { get => mainClient; set { if (Set(ref mainClient, value)) Raise(nameof(MainSummary)); } }
+    private ClientTileViewModel? mainClient;
+    public string MainSummary => MainClient is null ? "No main client: every visible client goes in the grid." : $"{MainClient.Label} will be maximized on the primary monitor; the rest fill the grid.";
     public ClientTileViewModel? SelectedClient { get => selectedClient; set { if (Set(ref selectedClient, value)) FocusCommand.Notify(); } }
     public LayoutOption SelectedLayout { get => selectedLayout; set { if (Set(ref selectedLayout, value)) { Raise(nameof(IsCustom)); Raise(nameof(LayoutSummary)); } } }
     public bool IsCustom => SelectedLayout.Columns == 0;
@@ -179,6 +183,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) { HandleError(ex); }
         finally { Busy = false; }
+        // These start with "do nothing while busy", so they must run after the refresh has released Busy.
+        _ = ApplySavedPlacementsAsync();
+        _ = RecoverSignedOutAsync();
     }
 
     private async Task ReadStateAsync()
@@ -220,8 +227,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var device = SelectedMonitor?.DeviceName;
             Monitors.Clear();
             foreach (var screen in state.screens) Monitors.Add(screen);
-            SelectedMonitor = Monitors.FirstOrDefault(m => m.DeviceName == device) ?? Monitors.FirstOrDefault();
+            SelectedMonitor = Monitors.FirstOrDefault(m => m.DeviceName == device) ?? Monitors.FirstOrDefault(m => !m.IsPrimary) ?? Monitors.FirstOrDefault();
         }
+        if (MainClient is { } main && !Clients.Contains(main)) MainClient = null;
         SavedCount = manager.OriginalCount;
         CurrentGrid = manager.LastGrid is { } grid ? $"{grid.Layout} on {grid.MonitorDevice.Replace(@"\\.\", "")}" : "No grid arranged";
         LastRefresh = $"Updated {DateTime.Now:HH:mm:ss}";
@@ -396,7 +404,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         { Warning = true; Message = "Enter whole numbers between 1 and 32 for columns and rows."; return Task.CompletedTask; }
         var clients = Clients.Select(c => c.Snapshot).ToArray();
         var screen = SelectedMonitor!;
-        return RunOperation(() => manager.Arrange(clients, screen, new(cols, rows)));
+        var main = MainClient is { IsIgnored: false } tile ? tile.Snapshot : null;
+        var mainScreen = Monitors.FirstOrDefault(m => m.IsPrimary) ?? screen;
+        return RunOperation(() => manager.ArrangeWithMain(clients, main, screen, mainScreen, new(cols, rows)));
     }
 
     private async Task RunOperation(Func<OperationResult> operation)
@@ -423,7 +433,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (disposed) return;
         try { TrackRoster(forceSave: true); } catch (Exception ex) { log.Write("Account roster could not be saved on close.", ex); }
-        disposed = true; monitor?.Dispose();
+        disposed = true; monitor?.Dispose(); launcher.Dispose();
         nameCancellation.Cancel();
         if (!resolvingNames) nameCancellation.Dispose();
         Remote.Dispose();

@@ -7,7 +7,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/RobloxAfkManager.ico</ApplicationIcon>
     <AssemblyName>RobloxAfkManager</AssemblyName>
-    <Version>0.9.0</Version>
+    <Version>0.10.0</Version>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../RobloxAfkManager.Core/RobloxAfkManager.Core.csproj" /></ItemGroup>
   <ItemGroup>
@@ -15,6 +15,9 @@
     <Resource Include="Assets/RobloxAfkManager.ico" />
     <EmbeddedResource Include="Remote/Web/*" />
     <Content Include="../RobloxAfkManager.Capture/bin/RobloxAfkManager.Capture.dll" Link="RobloxAfkManager.Capture.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4370.26" />
   </ItemGroup>
   <Target Name="BuildCaptureBridge" BeforeTargets="PrepareForBuild" Inputs="../RobloxAfkManager.Capture/Capture.cpp;../RobloxAfkManager.Capture/build.cmd" Outputs="../RobloxAfkManager.Capture/bin/RobloxAfkManager.Capture.dll">
     <Exec Command="&quot;$(MSBuildProjectDirectory)\..\RobloxAfkManager.Capture\build.cmd&quot; &quot;$(MSBuildProjectDirectory)\..\RobloxAfkManager.Capture\bin&quot;" />

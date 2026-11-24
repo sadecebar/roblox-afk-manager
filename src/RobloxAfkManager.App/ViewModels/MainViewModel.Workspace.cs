@@ -52,7 +52,8 @@ public sealed partial class MainViewModel
         if (tile.AccountId is not { } id) return;
         if (!profiles.TryGetValue(id, out var previous) && profiles.Count >= 128) return;
         profiles[id] = new(id, tile.CustomName, previous?.Order ?? (profiles.Count == 0 ? 0 : profiles.Values.Max(p => p.Order) + 1),
-            tile.IsIgnored, updatePlan ? preferredPlan : previous?.PreferredPlan);
+            tile.IsIgnored, updatePlan ? preferredPlan : previous?.PreferredPlan,
+            previous?.Username, previous?.LastGame, previous?.LastSeen, previous?.Window);
         SaveWorkspace();
     }
     private void SaveOrder()

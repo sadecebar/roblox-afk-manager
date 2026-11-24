@@ -20,7 +20,7 @@ Each identified profile also records the account's last known username, last gam
 - For the first two minutes after the manager starts (or until every running client is identified), the header count waits, so clients still being identified are not reported as offline. The panel notes how many running clients are still unidentified.
 - **Copy name** puts the account name on the clipboard. **Forget** stops listing an account until it runs again.
 - Avatars appear for accounts seen during the current manager session; otherwise an initial is shown.
-- The manager cannot open or log in to an account. That would require login cookies, which it never reads.
+- Opening accounts is optional and separate: see [Opening accounts](../README.md#-opening-accounts-optional). Without a saved login the manager cannot open an account.
 
 ## Cards
 

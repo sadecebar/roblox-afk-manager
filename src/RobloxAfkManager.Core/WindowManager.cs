@@ -65,6 +65,64 @@ public sealed class WindowManager(IWindowSystem windows, IAppLog log)
         catch (Exception ex) { return Failure("Arrange grid", ex); }
     }
 
+    // The main client is maximized (bordered, not fullscreen) on mainScreen; everything else goes in the grid.
+    public OperationResult ArrangeWithMain(IReadOnlyList<ClientWindow> clients, ClientWindow? main, MonitorInfo gridScreen, MonitorInfo mainScreen, LayoutSpec layout)
+    {
+        if (main is null || IsIgnored(main.Identity)) return Arrange(clients, gridScreen, layout);
+        var others = clients.Where(c => c.Identity != main.Identity).ToArray();
+        var result = others.Count(c => !IsIgnored(c.Identity)) == 0 ? new OperationResult(true, "") : Arrange(others, gridScreen, layout);
+        if (!result.Success) return result;
+        try
+        {
+            var current = windows.GetMonitors().SingleOrDefault(m => m.DeviceName == mainScreen.DeviceName)
+                ?? throw new InvalidOperationException("The main monitor is no longer connected.");
+            originals.TryAdd(main.Identity, windows.Capture(main.Identity));
+            windows.Maximize(main.Identity, current.WorkArea);
+            log.Write($"Maximized main client PID {main.Identity.ProcessId} on {current.DeviceName}.");
+            return new(true, $"{result.Message} Main client maximized on {current.DeviceName.Replace(@"\\.\", "")}.".Trim());
+        }
+        catch (Exception ex) { return new(false, $"Grid arranged, but the main client could not be maximized: {ex.Message}"); }
+    }
+
+    public SavedPlacement? CapturePlacement(WindowIdentity id)
+    {
+        try
+        {
+            var placement = windows.Capture(id);
+            if (placement.ShowCommand == 2) return null; // minimized: its bounds are meaningless
+            return placement.ShowCommand == 3 ? new(placement.NormalBounds, true) : new(windows.ReadBounds(id), false);
+        }
+        catch (Exception ex) { log.Write($"Could not read the window position of PID {id.ProcessId}.", ex); return null; }
+    }
+
+    // Moves a client to its remembered spot. Never touches saved "originals", so Restore stays meaningful.
+    public OperationResult ApplyPlacement(WindowIdentity id, SavedPlacement place)
+    {
+        try
+        {
+            if (IsIgnored(id)) return new(true, "Ignored.");
+            var monitor = windows.GetMonitors().Where(m => m.WorkArea.Intersects(place.Bounds))
+                .OrderByDescending(m => Math.Min(m.WorkArea.Right, place.Bounds.Right) - Math.Max(m.WorkArea.X, place.Bounds.X)).FirstOrDefault()
+                ?? throw new InvalidOperationException("The monitor this window was saved on isn't connected.");
+            windows.MoveNormal(id, place.Bounds);
+            if (place.Maximized) windows.Maximize(id, monitor.WorkArea);
+            return new(true, "Placed.");
+        }
+        catch (Exception ex) { return Failure("Restore saved position", ex); }
+    }
+
+    public OperationResult CloseClient(WindowIdentity id)
+    {
+        try
+        {
+            if (!windows.IsCurrent(id)) return new(true, "Already closed.");
+            windows.Close(id);
+            log.Write($"Closed client PID {id.ProcessId}.");
+            return new(true, "Closed.");
+        }
+        catch (Exception ex) { return Failure("Close client", ex); }
+    }
+
     public OperationResult RestoreGrid()
     {
         try

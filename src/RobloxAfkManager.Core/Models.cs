@@ -25,6 +25,8 @@ public sealed record LayoutSpec(int Columns, int Rows, int Gap = 6)
 {
     public override string ToString() => $"{Columns} × {Rows}";
 }
+// Where an account's window belongs: outer bounds in physical pixels, and whether it is maximized.
+public sealed record SavedPlacement(PixelRect Bounds, bool Maximized);
 public sealed record WindowTarget(WindowIdentity Identity, PixelRect Bounds);
 public sealed record GridPlan(string MonitorDevice, PixelRect WorkArea, uint Dpi, LayoutSpec Layout, IReadOnlyList<WindowTarget> Targets);
 public sealed record OperationResult(bool Success, string Message);
@@ -37,10 +39,14 @@ public interface IWindowSystem
     WindowLimits GetLimits(WindowIdentity identity, uint targetDpi);
     Placement Capture(WindowIdentity identity);
     void MoveNormal(WindowIdentity identity, PixelRect bounds);
+    // Maximizes (keeps the title bar and border) on the monitor that contains monitorArea.
+    void Maximize(WindowIdentity identity, PixelRect monitorArea);
     PixelRect ReadBounds(WindowIdentity identity);
     bool IsNormal(WindowIdentity identity);
     void Restore(WindowIdentity identity, Placement placement);
     bool Focus(WindowIdentity identity);
     void RestoreForPreview(WindowIdentity identity);
+    // Ends one Roblox client: asks politely, then terminates it if it does not exit (a frozen client will not).
+    void Close(WindowIdentity identity);
 }
 public interface IAppLog { void Write(string message, Exception? exception = null); }

@@ -4,7 +4,7 @@ The optional mobile dashboard is read-only. Desktop previews, ignoring, resource
 
 ## Run the updated app
 
-Close the old manager normally so it restores any policies/limits it applied. Run `Run.cmd` inside the extracted release folder (or the `artifacts/RobloxAfkManager-v<version>-win-x64` package if you built it yourself). If an optional repository-local `.dotnet` SDK exists, the launcher can use its runtimes. For a package copied elsewhere, install both **.NET 10 Desktop Runtime x64** and **ASP.NET Core Runtime 10 x64** from [Microsoft's .NET 10 downloads](https://dotnet.microsoft.com/en-us/download/dotnet/10.0), then run `RobloxAfkManager.exe`. The .NET 10 SDK for Windows also supplies both for development.
+Close the old manager normally so it restores any policies/limits it applied. Run `RobloxAfkManager.exe` from the extracted release folder (or the `artifacts/RobloxAfkManager-v<version>-win-x64` package if you built it yourself). Install both **.NET 10 Desktop Runtime x64** and **ASP.NET Core Runtime 10 x64** from [Microsoft's .NET 10 downloads](https://dotnet.microsoft.com/en-us/download/dotnet/10.0). The .NET 10 SDK for Windows also supplies both for development.
 
 In the manager, choose **Mobile → Start monitoring**. Copy the displayed access code. On the same PC, open `http://127.0.0.1:8765` and paste it. Check that two included clients produce real images before setting up remote access. The random 48-character code changes after Stop/Start or a manager restart. Anyone who has both network access and this code can view the included clients. It is never put in URLs or logs.
 
@@ -49,7 +49,7 @@ When system memory is nearly full, bounded capture textures and the web host can
 
 ## Troubleshooting and acceptance checks
 
-1. **App will not start:** check both required .NET runtimes, or use the workspace `Run.cmd`. Keep the capture DLL and all release files beside the EXE.
+1. **App will not start:** check both required .NET runtimes. Keep the capture DLL and all release files beside the EXE.
 2. **Start fails:** another manager/service may already use port 8765. Close the duplicate normally; the app does not terminate it or bind to a public port as a fallback.
 3. **Phone cannot connect:** first verify the local URL on the PC, then `tailscale status` and `tailscale serve status`, the exact HTTPS URL, both devices' connection, HTTPS setup and tailnet access policy. PC sleep/shutdown or internet loss stops availability. No automatic power-plan changes are made.
 4. **Unauthorized:** copy the current access code from Mobile. Old codes stop working after restarting monitoring. Safari stores the code only for this tab's session; Disconnect clears it. A page reload can reuse that tab session.

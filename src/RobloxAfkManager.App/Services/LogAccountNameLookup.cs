@@ -56,23 +56,60 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
         return ids.Where(p => cache.ContainsKey(p.Value)).ToDictionary(p => p.Key, p => cache[p.Value].Name);
     }
 
+    // HTTP 401s are counted as the log grows instead of from a small slice of it, so a slow trickle and a heavy burst
+    // are both measured over the same ten minutes. Each file keeps the position it was read up to.
+    private sealed class AuthLog { public long Offset = -1; public readonly Queue<DateTimeOffset> Seen = new(); }
+    private readonly Dictionary<string, AuthLog> authLogs = [];
+    private const int AuthReadLimit = 4 * 1024 * 1024;
+
+    public int CountAuthFailures(string path, ProcessIdentity process, DateTimeOffset now)
+    {
+        if (!authLogs.TryGetValue(path, out var log)) authLogs[path] = log = new();
+        var start = new DateTimeOffset(new DateTime(process.StartTimeUtcTicks, DateTimeKind.Utc));
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        long length = stream.Length;
+        bool skipPartial = false;
+        if (log.Offset < 0 || log.Offset > length || length - log.Offset > AuthReadLimit)
+        { log.Offset = Math.Max(0, length - AuthReadLimit); skipPartial = log.Offset > 0; }
+        int count = (int)Math.Min(length - log.Offset, AuthReadLimit);
+        if (count <= 0) { while (log.Seen.Count > 0 && now - log.Seen.Peek() > TimeSpan.FromMinutes(10)) log.Seen.Dequeue(); return log.Seen.Count; }
+        var buffer = new byte[count];
+        stream.Seek(log.Offset, SeekOrigin.Begin);
+        int total = 0, read;
+        while (total < count && (read = stream.Read(buffer, total, count - total)) > 0) total += read;
+        int end = Array.LastIndexOf(buffer, (byte)'\n', Math.Max(0, total - 1));
+        if (end < 0) end = skipPartial ? total : -1; // no complete line yet: wait for more
+        if (end >= 0)
+        {
+            int from = 0;
+            if (skipPartial) { int first = Array.IndexOf(buffer, (byte)'\n', 0, Math.Max(0, end)); from = first < 0 ? end : first + 1; }
+            foreach (var line in Encoding.UTF8.GetString(buffer, from, Math.Max(0, end - from)).Split('\n'))
+                if (SessionLogParser.TryReadAuthFailure(line, out var at) && at >= start.AddSeconds(-2) && at <= now.AddMinutes(1)) log.Seen.Enqueue(at);
+            log.Offset += end + 1;
+        }
+        while (log.Seen.Count > 0 && now - log.Seen.Peek() > TimeSpan.FromMinutes(10)) log.Seen.Dequeue();
+        return log.Seen.Count;
+    }
+
     private Dictionary<ProcessIdentity, long> FindUserIds(HashSet<ProcessIdentity> live, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         if (live.Count == 0) { bindings.Clear(); checkedAt.Clear(); return []; }
         foreach (var path in bindings.Where(p => !live.Contains(p.Value.Process) || now - p.Value.CheckedAt > TimeSpan.FromMinutes(5)).Select(p => p.Key).ToArray()) bindings.Remove(path);
-        if (!Directory.Exists(directory)) { bindings.Clear(); return []; }
+        var directories = new[] { directory }.Where(Directory.Exists).ToArray();
+        if (directories.Length == 0) { bindings.Clear(); return []; }
         FileInfo[] files;
         try
         {
             var earliest = new DateTime(live.Min(p => p.StartTimeUtcTicks), DateTimeKind.Utc);
-            files = new DirectoryInfo(directory).EnumerateFiles("*Player*.log")
+            files = directories.SelectMany(d => new DirectoryInfo(d).EnumerateFiles("*Player*.log"))
                 .Where(f => f.LastWriteTimeUtc >= earliest && (f.Attributes & FileAttributes.ReparsePoint) == 0)
                 .OrderByDescending(f => f.LastWriteTimeUtc).Take(64).ToArray();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
         var paths = files.Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var path in checkedAt.Keys.Where(p => !paths.Contains(p)).ToArray()) { checkedAt.Remove(path); bindings.Remove(path); }
+        foreach (var path in authLogs.Keys.Where(p => !paths.Contains(p)).ToArray()) authLogs.Remove(path);
         foreach (var file in files.OrderBy(f => checkedAt.GetValueOrDefault(f.FullName)).Take(16))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -85,7 +122,7 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
                 if (matches.Length != 1) continue;
                 string text = ReadBoundedLog(file.FullName);
                 if (AccountNames.ReadLocalUserId(text) is { } userId)
-                    bindings[file.FullName] = new(matches[0], userId, now, SessionLogParser.Read(text, matches[0], now) with { UserId = userId });
+                    bindings[file.FullName] = new(matches[0], userId, now, SessionLogParser.Read(text, matches[0], now) with { UserId = userId, AuthFailures = CountAuthFailures(file.FullName, matches[0], now) });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or ArgumentException or System.Text.RegularExpressions.RegexMatchTimeoutException)
             { /* No raw log contents, names, URLs or file paths are logged. */ }

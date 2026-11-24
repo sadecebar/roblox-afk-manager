@@ -19,11 +19,11 @@ internal sealed class FakeWindowSystem : IWindowSystem
     public WindowIdentity? FailRestore { get; set; }
     public bool FocusAllowed { get; set; } = true;
     public bool MonitorPresent { get; set; } = true;
-    public FakeWindowSystem(int count = 2)
+    public FakeWindowSystem(int count = 2, long? startTicks = null)
     {
         for (int i = 1; i <= count; i++)
         {
-            var id = new WindowIdentity(i, i + 100, i * 1000);
+            var id = new WindowIdentity(i, i + 100, startTicks ?? i * 1000);
             var rect = new PixelRect(100 + i * 10, 100 + i * 10, 800, 600);
             Bounds[id] = rect; Placements[id] = new(0, 1, 0, 0, 0, 0, rect);
         }
@@ -38,6 +38,13 @@ internal sealed class FakeWindowSystem : IWindowSystem
         Check(id); Moved.Add(id); Bounds[id] = id == RejectSize ? rect with { Width = rect.Width + 100 } : rect;
         Placements[id] = Placements[id] with { NormalBounds = Bounds[id], ShowCommand = 1 };
         if (id == FailMove) throw new InvalidOperationException("Move failed after partial mutation");
+    }
+    public List<WindowIdentity> Closing { get; } = [];
+    public void Close(WindowIdentity id) { Check(id); Closing.Add(id); Closed.Add(id); }
+    public void Maximize(WindowIdentity id, PixelRect area)
+    {
+        Check(id); Moved.Add(id); Bounds[id] = area;
+        Placements[id] = Placements[id] with { ShowCommand = 3 };
     }
     public PixelRect ReadBounds(WindowIdentity id) { Check(id); return Bounds[id]; }
     public bool IsNormal(WindowIdentity id) => IsCurrent(id) && Placements[id].ShowCommand is 1 or 4;

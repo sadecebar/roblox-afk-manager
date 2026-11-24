@@ -6,12 +6,13 @@
   <img alt="Windows 10/11 x64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-9D8CFF?style=flat-square&labelColor=101016">
   <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-9D8CFF?style=flat-square&labelColor=101016">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5FD99B?style=flat-square&labelColor=101016">
-  <img alt="No cookies, no passwords" src="https://img.shields.io/badge/cookies%20%26%20passwords-never%20touched-5FD99B?style=flat-square&labelColor=101016">
+  <img alt="Never stores passwords" src="https://img.shields.io/badge/passwords-never%20stored-5FD99B?style=flat-square&labelColor=101016">
 </p>
 
 <p align="center">
   <a href="#-download">Download</a> ·
   <a href="#-features">Features</a> ·
+  <a href="#-opening-accounts-optional">Opening accounts</a> ·
   <a href="#-phone-monitoring">Phone monitoring</a> ·
   <a href="#-privacy--safety">Privacy</a> ·
   <a href="#-faq">FAQ</a> ·
@@ -22,7 +23,7 @@
 
 **Roblox AFK Manager** is a free Windows dashboard for people who keep several Roblox clients running at once. Every client gets a live preview card with its account, game, session time and health. You can see at a glance which ones are fine and which one dropped, jump to any game with one click, keep the account you're actually playing out of the way, and check on everything from your phone.
 
-It only **watches and organizes**. It never plays for you, never touches your login, and never reads or changes game memory.
+It **watches and organizes**. It never plays for you, never asks for or stores your password, and never reads or changes game memory. An optional feature can reopen closed accounts from a saved login session; it does nothing until you add one, and it is [explained below](#-opening-accounts-optional).
 
 <p align="center">
   <img src="docs/images/dashboard.png" alt="The dashboard with twelve client cards" width="100%">
@@ -68,6 +69,9 @@ It only **watches and organizes**. It never plays for you, never touches your lo
   <img src="docs/images/plans-panel.png" alt="The Performance panel with plan selector and RAM limit" width="380">
 </p>
 
+### 🚀 Opening accounts (optional)
+Save a login session once, then reopen every closed account with one button, line the windows up on a grid, and have each one return to its saved position. See [Opening accounts](#-opening-accounts-optional).
+
 ### 📱 Phone monitoring
 A private, read-only page for your phone: account names, game, session state, RAM and a screenshot of each client, refreshed about every 8 seconds. Tap a card to enlarge it. See [Phone monitoring](#-phone-monitoring).
 
@@ -105,7 +109,8 @@ Start with two clients to get a feel for it before scaling up.
 | **Ignore** | Hides the client and excludes it from everything else. |
 | **Refresh** | Re-detects clients and retries previews. |
 | **Restore windows** | Restores clients that were minimized outside the manager. |
-| **Offline** | Accounts that ran recently but are closed now. Copy a name, or **Forget** one you closed on purpose. |
+| **Offline** | Accounts that ran recently but are closed now. Copy a name, or **Forget** one you closed on purpose. Also where saved logins, the game to open and **Open closed** live. |
+| **Arrange** | Puts the game windows on a grid on the monitor you choose. Optionally maximizes one main client. **Save positions** remembers where each window sits. |
 | **Activity** | Recent events, desktop notification toggle, Clear. |
 | **Plans** | Resource plans and the RAM limit. |
 | **Mobile** | Starts or stops phone monitoring and shows the access code. |
@@ -124,6 +129,32 @@ Plans are Windows scheduling hints. They **don't** cap FPS or guarantee lower RA
 The **resident RAM limit** caps each client's physical working set, not the total memory the game allocates. Setting it too low makes Windows page memory to disk, which can cause stutters or slow rejoins. It's always off when the app starts. Turn it off if games start stuttering.
 
 If the app is force-killed, it can't restore settings. They stay applied until each game closes.
+
+## 🚀 Opening accounts (optional)
+
+Everything above works without this. It only matters if you want the manager to reopen accounts that closed. Without it, the **Offline** panel still tells you which account to open by hand.
+
+**What it does**
+- **Open closed** (and a per-account **Open**) starts Roblox for every saved account that isn't running, one every 10 seconds, in the game you choose.
+- **Game to open:** paste a `roblox.com/games/…` link or a place id in the Offline panel. Nothing is opened until you set one.
+- **Arrange** puts the windows on a grid on the monitor you pick, and can maximize one main client. **Save positions** remembers each window's spot, and they return there when the accounts are reopened.
+- **Restart an account when Roblox ends its login** (off by default). When a client's log shows a burst of "401 Unauthorized" answers, its login was ended and it will freeze and get kicked. The manager then closes and reopens just that account. At most 4 restarts an hour overall, and one per account every 20 minutes. Every restart is listed in **Activity**.
+
+**How an account gets saved**
+- **Log in to add an account…** opens Roblox's own login page in an embedded browser (Microsoft Edge WebView2). You type your username and password there yourself; the manager never sees them and has no password storage. When you're logged in the window closes and the account's session is saved.
+- Or paste a `.ROBLOSECURITY` cookie value instead.
+- The session cookie is encrypted with Windows DPAPI, so only your Windows user on this PC can read it, and stored in `%LOCALAPPDATA%\RobloxAfkManager\logins.dat`. Each account's embedded-browser profile is kept in `%LOCALAPPDATA%\RobloxAfkManager\browser`. **Remove** deletes both.
+- The cookie is only ever sent to `roblox.com` addresses (to confirm who it belongs to and to get a one-time launch ticket). It is never logged or shown.
+
+**How an account is opened**
+The manager asks Roblox for a launch ticket with the saved session, then starts `RobloxPlayerBeta.exe` directly with that ticket, the same thing the website does when you press Play. It never uses the `roblox-player:` link, because Roblox's installer behind it closes every client that is already running.
+
+**Things to know**
+- **A saved session is as powerful as your password.** Anyone who can run programs as your Windows user could use it. Don't use this on a PC you share. Logging out of an account on roblox.com, or changing its password, ends the saved session and you add it again.
+- **Running several Roblox clients at once** needs Roblox's single-instance check to be lifted, which this manager does not do. Use whatever you already use for that. The manager only starts the clients.
+- Roblox's rules decide whether multiple accounts and AFK farming are allowed for the game you play. Using this tool doesn't make anything permitted. Treat it as your responsibility and read the [Terms of Use](https://en.help.roblox.com/hc/en-us/articles/115004647846).
+- It sends only what the website itself would: a plain, honest `User-Agent` naming this tool, no disguise as a browser or the Roblox client, and no clicking or typing into Roblox's pages.
+- An account that Roblox's own app or a browser also has logged in can be signed out by that. If an account keeps losing its login, turn on the restart option, or log in again with **Login**.
 
 ## 📱 Phone monitoring
 
@@ -151,12 +182,17 @@ The server only listens on your own PC (`127.0.0.1`), and Tailscale Serve keeps 
 - Asks Roblox's **public** APIs for usernames, avatar headshots and game names, sending only public IDs.
 - Saves your preferences and event history locally in `%LOCALAPPDATA%\RobloxAfkManager`.
 
+**Only if you use [Opening accounts](#-opening-accounts-optional)**
+- Stores each account's session cookie, encrypted for your Windows user, and sends it only to `roblox.com` to open that account.
+- Closes a client only when you turn on the restart option, and then only the account that lost its login.
+
 **What it never does**
-- ❌ Ask for, read or store passwords, cookies or login tokens.
+- ❌ Ask for, read or store your **password**. You type it into Roblox's own page.
+- ❌ Read any cookie unless you add a saved login yourself.
 - ❌ Inject code, read or write game memory, or automate gameplay.
 - ❌ Bypass protections or stop Roblox's idle disconnect.
 - ❌ Upload your logs, record video, or send data anywhere except Roblox's public APIs (and your phone, if you turn monitoring on).
-- ❌ Minimize, suspend, close or restart your games.
+- ❌ Close or restart your games on its own, unless you turned on the restart option.
 
 Before every window or resource change, it verifies that the process is still the same one it saw before (so a reused process ID can't be mistaken for another account), and it saves original settings so they can be restored.
 
@@ -169,13 +205,13 @@ The game is minimized, on another virtual desktop, or not rendering. Restore it 
 Automatic naming needs the game to finish joining and checks logs at most every 30 seconds. Give it a minute, or click the pencil to type the name yourself.
 
 **One of my accounts closed. Which one?**
-Open **Offline**. It lists every account that ran in the last 24 hours but isn't running now, with its last game and when it was last seen. The manager can't log in for you, but it tells you exactly which account to open.
+Open **Offline**. It lists every account that ran in the last 24 hours but isn't running now, with its last game and when it was last seen. It tells you exactly which account to open, and **Open closed** can start it for you if you saved its login.
 
 **Does this stop me getting kicked for being idle?**
 No, by design. Roblox's idle disconnect still applies. The manager tells you when a client disconnects so you can deal with it.
 
-**Can it rejoin or launch accounts automatically?**
-No. That would need your login cookies, which this app deliberately never touches.
+**Can it launch accounts?**
+Yes, if you save a login for them. See [Opening accounts](#-opening-accounts-optional). It never stores passwords and does nothing until you add a login.
 
 **Will Low plan or the RAM limit make my PC run more clients?**
 Maybe, maybe not. They change how Windows prioritizes clients. Measure on your own machine and back off if games stutter.
