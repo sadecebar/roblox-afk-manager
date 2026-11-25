@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+- **Disconnects are now detected.** The log reader missed the lines Roblox writes when the server connection ends ("Client has been disconnected with reason…", "Lost connection with reason…"), so a client left on an error screen (such as error 257) stayed "Joined" with no alert and no rejoin. Both are recognized now.
+- **Auto-rejoin waits 5 minutes** (was 60 seconds) before closing and restarting a disconnected client, so one that reconnects by itself is left alone.
+
 ## v0.11.0: Discord alerts, live status board, Settings page
 
 Released 2026-11-25. Everything new is optional and off until you set it up. Nothing stores or asks for your password.

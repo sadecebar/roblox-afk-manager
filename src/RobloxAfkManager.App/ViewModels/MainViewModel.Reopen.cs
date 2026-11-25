@@ -9,7 +9,7 @@ public sealed partial class MainViewModel
 {
     private sealed record Pending(string Label, DateTimeOffset Since, bool CloseFirst, WindowIdentity? Identity);
     private const int MaxReopensPerAccountPerHour = 3, MaxReopensPerHour = 24;
-    private static readonly TimeSpan KickedDelay = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan KickedDelay = TimeSpan.FromMinutes(5);
     // How long an account must stay gone before it is reopened, so a window that blinks out for a moment is left alone.
     public TimeSpan ReopenAfter { get; set; } = TimeSpan.FromSeconds(25);
     private bool autoReopen, reopening;

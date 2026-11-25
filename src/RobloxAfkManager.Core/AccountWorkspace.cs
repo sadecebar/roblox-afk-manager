@@ -93,7 +93,10 @@ public static partial class SessionLogParser
                 user = id; place = ReadId("placeid"); universe = ReadId("universeid");
                 phase = SessionPhase.Joined; joined = last = at;
             }
-            else if (tag == "Network" && (message.StartsWith("Client:Disconnect", StringComparison.Ordinal) || message.StartsWith("Connection lost:", StringComparison.Ordinal)))
+            // "Lost connection with reason" / "Client has been disconnected with reason" are what Roblox writes when the server
+            // connection ends (error prompts such as 257). A client that reconnects reports a new join, which replaces this phase.
+            else if (tag == "Network" && (message.StartsWith("Client:Disconnect", StringComparison.Ordinal) || message.StartsWith("Connection lost:", StringComparison.Ordinal)
+                || message.StartsWith("Lost connection with reason", StringComparison.Ordinal) || message.StartsWith("Client has been disconnected with reason", StringComparison.Ordinal)))
             { phase = SessionPhase.Disconnected; last = at; }
             else if (tag == "GameJoinUtil" && message.StartsWith("GameJoinUtil::joinGamePostStandard:", StringComparison.Ordinal))
             { phase = SessionPhase.Joining; joined = null; place = universe = null; last = at; }

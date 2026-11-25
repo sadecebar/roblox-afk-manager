@@ -33,6 +33,15 @@ internal static class SessionWorkspaceTests
             string game = string.Join(Environment.NewLine, Enumerable.Range(0, 40).Select(i => Line(Now, "Output", "status:401 [DFLog::HttpTraceError]")));
             Program.Check(SessionLogParser.Read(Join(Now.AddMinutes(-8)) + Environment.NewLine + game, Process, Now).AuthFailures == 0);
         });
+        test("Session parser treats Roblox's real connection-lost lines as a disconnect", () =>
+        {
+            foreach (string message in new[] { "Client has been disconnected with reason: Lost connection due to an error.", "Lost connection with reason : Lost connection due to an error." })
+            {
+                string text = Join(Now.AddMinutes(-20)) + "\n" + Line(Now.AddMinutes(-6), "Network", message);
+                Program.Check(SessionLogParser.Read(text, Process, Now).Phase == SessionPhase.Disconnected);
+                Program.Check(SessionLogParser.Read(text + "\n" + Join(Now), Process, Now).Phase == SessionPhase.Joined);
+            }
+        });
         test("Session parser resets duration on rejoin and distinguishes joining from a completed join", () =>
         {
             string text = Join(Now.AddMinutes(-20)) + "\n" + Line(Now.AddMinutes(-2), "Network", "Client:Disconnect");
