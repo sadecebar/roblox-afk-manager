@@ -83,7 +83,7 @@ Away from your PC? The manager can message a Discord channel when something goes
 
 Open **Settings → Alerts**, paste a channel webhook address (channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL), and press **Test**. Add your Discord user ID if you want your phone to buzz: Discord only notifies you if you are mentioned, so without it messages arrive silently in the channel.
 
-- **Only when you're away.** A chip in the header shows **At PC** or **Away**. By default the manager treats you as away after 2 minutes without keyboard or mouse input (change the time, or force Away / At PC, in **Settings → Alerts**; clicking the chip cycles the modes). At the PC nothing is sent or reopened, so closing a client yourself never pings you. When you step away, you get one quiet message listing accounts that were already down, and from then on problems ping you.
+- **Only when you're away.** A chip in the header shows **At PC**, **Away** or **Sleep**. Click it to turn **Sleep mode** on or off: Sleep mode counts you as away even while you are using the PC, for when you're busy with something else and still want alerts and reopening. By default the manager treats you as away after 2 minutes without keyboard or mouse input (change the time, or choose Sleep mode / At PC, in **Settings → Alerts**). At the PC nothing is sent or reopened, so closing a client yourself never pings you. When you step away, you get one quiet message listing accounts that were already down, and from then on problems ping you.
 - Several events close together are sent as **one message**, so twelve accounts dropping at once is one ping, not twelve. At most 30 messages an hour.
 - The webhook address is a secret. It is stored **encrypted for your Windows user**, sent only to Discord, and never logged. **Turn off** deletes it. If it ever leaks, delete the webhook in Discord.
 - Messages contain account names (as shown on the cards), a short description and a time. Nothing else leaves your PC. Alerts can only mention you: nobody else, and never `@everyone`.
@@ -130,7 +130,7 @@ Start with two clients to get a feel for it before scaling up.
 | **Offline** | Accounts that ran recently but are closed now. Copy a name, or **Forget** one you closed on purpose. |
 | **Activity** | Recent events, desktop notification toggle, Clear. |
 | **Settings** | Five tabs. **Accounts**: saved logins, the game to open, Open closed / Open selected, backups. **Alerts**: Discord alerts and Away mode. **Layout**: arrange windows and save positions. **Plans**: resource plans and the RAM limit. **Phone**: phone monitoring and its access code. |
-| **At PC / Away** chip | Shows when Discord alerts are active (only with Discord alerts set up). Click to switch between Automatic, Always away and At PC. |
+| **At PC / Away / Sleep** chip | Shows whether Discord alerts and automatic reopening are active. Click to turn **Sleep mode** on (count as away even while you use the PC) or off. Appears once Discord alerts or automatic reopening are set up. |
 | **Ignored** | Lists ignored clients, restores original window placements. |
 
 ## 📊 Resource plans

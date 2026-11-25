@@ -84,7 +84,7 @@ public partial class MainWindow : Window
         await viewModel.AddLoginAsync(cookie);
     }
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => TogglePanel(SettingsPopup);
-    private void AwayChip_Click(object sender, RoutedEventArgs e) => viewModel.CycleAway();
+    private void AwayChip_Click(object sender, RoutedEventArgs e) => viewModel.ToggleSleep();
     private void ClearMain_Click(object sender, RoutedEventArgs e) => viewModel.MainClient = null;
     private void ArrangeNow_Click(object sender, RoutedEventArgs e) => SettingsPopup.IsOpen = false;
     private void IgnoredButton_Click(object sender, RoutedEventArgs e) => TogglePanel(IgnoredPopup);

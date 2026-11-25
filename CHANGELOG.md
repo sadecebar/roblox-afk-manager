@@ -7,6 +7,7 @@
 - **Discord alerts.** Optional webhook that messages a channel when an account disconnects or is kicked, its game or window closes, it freezes, or it loses its login. Batched, pings only you, stored encrypted. See the README.
 - **Alerts update themselves.** When an account comes back, the bot edits its original Discord alert (green line, "back at 03:41") instead of posting again, and nobody is pinged twice.
 - **Away mode.** Alerts are sent only while you're away from the PC (automatic after 2 minutes without keyboard or mouse, or forced either way). A header chip shows At PC / Away. Closing a client yourself at the PC never pings you.
+- **Sleep mode.** Click the chip to count as away even while you use the PC. Click again to go back to automatic.
 - **Reopen crashed accounts when away** (off by default). An account whose window closes, or that is kicked and left on the error screen, is started again from its saved login. Waits 25 seconds, one account at a time, at most 3 times an hour per account and 24 an hour in total. Never acts while you're at the PC.
 - Password boxes now follow the dark theme.
 - **Open selected.** Tick accounts in the saved logins list and start just those.

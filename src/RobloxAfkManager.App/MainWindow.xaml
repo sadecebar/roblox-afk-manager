@@ -40,7 +40,7 @@
           </Border>
           <Button x:Name="AwayChip" Click="AwayChip_Click" Style="{StaticResource ToolbarButton}" MinHeight="24" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="{Binding AwayHint}" AutomationProperties.Name="{Binding AwayLabel, StringFormat=Discord alerts mode: {0}}" Visibility="{Binding ShowAwayChip, Converter={StaticResource BoolVisibility}}">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-              <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{StaticResource SubtleBrush}" /><Style.Triggers><DataTrigger Binding="{Binding IsAway}" Value="True"><Setter Property="Fill" Value="{StaticResource AccentBrush}" /></DataTrigger></Style.Triggers></Style></Ellipse.Style></Ellipse>
+              <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{StaticResource SubtleBrush}" /><Style.Triggers><DataTrigger Binding="{Binding IsAway}" Value="True"><Setter Property="Fill" Value="{StaticResource AccentBrush}" /></DataTrigger><DataTrigger Binding="{Binding SleepMode}" Value="True"><Setter Property="Fill" Value="{StaticResource WarningBrush}" /></DataTrigger></Style.Triggers></Style></Ellipse.Style></Ellipse>
               <TextBlock Text="{Binding AwayLabel}" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
@@ -285,7 +285,7 @@
             <TextBlock Text="When am I away?" Style="{StaticResource PopupTitle}" FontSize="15" />
             <ComboBox SelectedIndex="{Binding AwayModeIndex}" Margin="0,8,0,0" AutomationProperties.Name="Away mode">
               <ComboBoxItem Content="Automatic: away when I haven't touched the PC for a while" />
-              <ComboBoxItem Content="Always (treat me as away)" />
+              <ComboBoxItem Content="Sleep mode: always away, even while I use the PC" />
               <ComboBoxItem Content="Never (I'm at the PC)" />
             </ComboBox>
             <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="56" /></Grid.ColumnDefinitions>

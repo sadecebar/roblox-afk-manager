@@ -28,15 +28,18 @@ public sealed partial class MainViewModel
     public int AwayModeIndex { get => (int)awayMode; set { if (Enum.IsDefined((AwayModes)value) && (AwayModes)value != awayMode) { awayMode = (AwayModes)value; SaveAway(); } RaiseAway(); UpdateAway(); } }
     public int AwayMinutes { get => awayMinutes; set { awayMinutes = Math.Clamp(value, 1, 240); SaveAway(); RaiseAway(); UpdateAway(); } }
     public bool IsAway => awayMode switch { AwayModes.Away => true, AwayModes.AtPc => false, _ => idle.IdleFor() >= TimeSpan.FromMinutes(awayMinutes) };
-    public string AwayLabel => IsAway ? "Away" : "At PC";
+    public string AwayLabel => awayMode == AwayModes.Away ? "Sleep" : IsAway ? "Away" : "At PC";
+    public bool SleepMode => awayMode == AwayModes.Away;
     public string AwayHint => awayMode switch
     {
-        AwayModes.Away => "Away (forced): Discord alerts and pings are on. Click to change.",
-        AwayModes.AtPc => "At PC (forced): no Discord alerts. Click to change.",
-        _ => $"Automatic: you count as away after {awayMinutes} minutes without keyboard or mouse. Click to change.",
+        AwayModes.Away => "Sleep mode is on: you count as away even at the PC, so Discord alerts and automatic reopening are active. Click to turn it off.",
+        AwayModes.AtPc => "At PC (forced): no Discord alerts or reopening. Click to turn Sleep mode on.",
+        _ => $"Automatic: you count as away after {awayMinutes} minutes without keyboard or mouse. Click to turn Sleep mode on (away even while you use the PC).",
     };
     public void CycleAway() => AwayModeIndex = ((int)awayMode + 1) % 3;
-    private void RaiseAway() { Raise(nameof(AwayModeIndex)); Raise(nameof(AwayMinutes)); Raise(nameof(IsAway)); Raise(nameof(AwayLabel)); Raise(nameof(AwayHint)); }
+    // Sleep mode: count as away even while using the PC, for when you are busy with something else.
+    public void ToggleSleep() => AwayModeIndex = awayMode == AwayModes.Away ? (int)AwayModes.Auto : (int)AwayModes.Away;
+    private void RaiseAway() { Raise(nameof(AwayModeIndex)); Raise(nameof(AwayMinutes)); Raise(nameof(IsAway)); Raise(nameof(AwayLabel)); Raise(nameof(SleepMode)); Raise(nameof(AwayHint)); }
 
     private void LoadAway()
     {

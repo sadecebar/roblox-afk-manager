@@ -398,6 +398,26 @@ internal static class Program
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });
+        Test("Sleep mode counts the person as away even while they use the PC, and toggles back to automatic", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-sleep-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var idle = new FakeIdle(); // zero: actively using the PC
+                MainViewModel Make() => new(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(),
+                    loginVault: new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: idle);
+                using (var vm = Make())
+                {
+                    Check(!vm.IsAway && vm.AwayLabel == "At PC" && !vm.SleepMode);
+                    vm.ToggleSleep();
+                    Check(vm.IsAway && vm.SleepMode && vm.AwayLabel == "Sleep" && vm.AwayHint.Contains("Sleep mode is on"));
+                }
+                using (var again = Make()) Check(again.SleepMode && again.IsAway, "sleep mode was not remembered");
+                using (var last = Make()) { last.ToggleSleep(); Check(!last.IsAway && !last.SleepMode && last.AwayLabel == "At PC"); }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
         Test("Odd dimensions distribute remainders and preserve gaps", () =>
         {
             var cells = GridPlanner.Plan(new(15, -1080, 1919, 1039), new(4, 3, 7), Enumerable.Repeat(new WindowLimits(1, 1), 12).ToArray());
