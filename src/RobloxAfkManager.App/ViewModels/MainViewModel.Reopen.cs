@@ -73,7 +73,9 @@ public sealed partial class MainViewModel
         if (!IsAway) { pendingReopen.Clear(); return; } // you're back: leave it to you
         var now = DateTimeOffset.UtcNow;
         if (now - lastReopenAt < LaunchSpacing) return;
-        var due = pendingReopen.Where(p => now - p.Value.Since >= (p.Value.CloseFirst ? TimeSpan.Zero : ReopenAfter) && !IsActive(p.Key, now)).Select(p => p.Key).FirstOrDefault();
+        // A disconnected client still has its window open, so "running" must not block it: only a launch that just happened does.
+        bool Blocked(KeyValuePair<long, Pending> p) => p.Value.CloseFirst ? launchedAt.TryGetValue(p.Key, out var at) && now - at < LaunchGrace : IsActive(p.Key, now);
+        var due = pendingReopen.Where(p => now - p.Value.Since >= (p.Value.CloseFirst ? TimeSpan.Zero : ReopenAfter) && !Blocked(p)).Select(p => p.Key).FirstOrDefault();
         if (due == 0) return;
         var pending = pendingReopen[due];
 

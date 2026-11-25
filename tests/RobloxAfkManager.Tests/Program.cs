@@ -38,6 +38,16 @@ internal static class Program
                 new AccountDetails(new SessionReport(userId, 8, 18, SessionPhase.Joined, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow), "FixtureRanger", "Game", null)));
     }
 
+    // A client whose window is still open but whose log says it lost the server `ago` ago.
+    private sealed class DisconnectedAccountLookup(long userId, TimeSpan ago) : IAccountDetailsLookup
+    {
+        public Task<IReadOnlyDictionary<ProcessIdentity, string>> ResolveAsync(IReadOnlyList<ProcessIdentity> processes, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<ProcessIdentity, string>>(processes.ToDictionary(p => p, _ => "FixtureRanger"));
+        public Task<IReadOnlyDictionary<ProcessIdentity, AccountDetails>> ResolveDetailsAsync(IReadOnlyList<ProcessIdentity> processes, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<ProcessIdentity, AccountDetails>>(processes.ToDictionary(p => p, p =>
+                new AccountDetails(new SessionReport(userId, 8, 18, SessionPhase.Disconnected, null, DateTimeOffset.UtcNow - ago, DateTimeOffset.UtcNow, 0, "Lost connection to the game server, please reconnect"), "FixtureRanger", "Game", null)));
+    }
+
     private static int passed, failed;
     [STAThread]
     private static int Main(string[] args)
@@ -426,6 +436,31 @@ internal static class Program
                 var away = Crash(TimeSpan.FromMinutes(10), true);
                 Check(away.Launched.Count == 1 && away.Launched[0].Place == 1818 && away.Launched[0].Cookie[0] == (char)114, "crashed client was not reopened");
                 Check(away.Activity.Any(m => m.Contains("reopened")));
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Away: a client left disconnected with its window open is closed and reopened after five minutes, not before", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-kicked-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                (int Launched, int Closing, string[] Activity) Run(TimeSpan disconnectedFor)
+                {
+                    string folder = Path.Combine(root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
+                    var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks); var launcher = new RecordingLauncher();
+                    using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(folder, new FakeDiscord());
+                    using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new DisconnectedAccountLookup(77, disconnectedFor), workspaceStore: new MemoryWorkspaceStore(),
+                        accountLauncher: launcher, loginVault: vault, settingsFolder: folder, discordWebhook: hook, userIdle: new FakeIdle { Idle = TimeSpan.FromMinutes(10) });
+                    vm.GameLink = "1818"; vm.AutoReopen = true;
+                    for (int i = 0; i < 40 && launcher.Launched.Count == 0 && i < 25; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(80); }
+                    return (launcher.Launched.Count, fake.Closing.Count, vm.Activity.Select(a => a.Message).ToArray());
+                }
+                var fresh = Run(TimeSpan.FromMinutes(1));
+                Check(fresh.Launched == 0 && fresh.Closing == 0, "restarted a client that had only just disconnected");
+                var stuck = Run(TimeSpan.FromMinutes(10));
+                Check(stuck.Launched == 1 && stuck.Closing == 1, $"a disconnected client with an open window was not restarted (launched {stuck.Launched}, closed {stuck.Closing})");
+                Check(stuck.Activity.Any(m => m.Contains("Lost connection") && m.Contains("reopened")), "the fix was not written down with its cause");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });
