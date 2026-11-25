@@ -108,6 +108,8 @@ public partial class MainWindow : Window
         SettingsTabAlerts.IsChecked = true;
         if (!SettingsPopup.IsOpen) TogglePanel(SettingsPopup);
     }
+    private void LoginFixChip_Click(object sender, RoutedEventArgs e) => viewModel.AutoRecover = !viewModel.AutoRecover;
+    private void QuietFixChip_Click(object sender, RoutedEventArgs e) => viewModel.AutoRestartQuiet = !viewModel.AutoRestartQuiet;
     private void ReopenChip_Click(object sender, RoutedEventArgs e) => viewModel.ToggleReopen();
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => TogglePanel(SettingsPopup);
     private void AwayChip_Click(object sender, RoutedEventArgs e) => viewModel.ToggleSleep();

@@ -59,6 +59,27 @@
               <Ellipse Style="{StaticResource StateDot}" Tag="{Binding ReopenState}" Margin="7,0,0,0" />
             </StackPanel>
           </Button>
+          <Button x:Name="LoginFixChip" Click="LoginFixChip_Click" Style="{StaticResource ToolbarButton}" MinHeight="24" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="{Binding LoginFixHint}" AutomationProperties.Name="Login fix">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock Text="&#xE8D7;" Style="{StaticResource BtnGlyph}" Margin="0,0,6,0" />
+              <TextBlock Text="Login fix" FontWeight="SemiBold" VerticalAlignment="Center" Style="{StaticResource ShellDetail}" />
+              <Ellipse Style="{StaticResource StateDot}" Tag="{Binding LoginFixState}" Margin="7,0,0,0" />
+            </StackPanel>
+          </Button>
+          <Button x:Name="QuietFixChip" Click="QuietFixChip_Click" Style="{StaticResource ToolbarButton}" MinHeight="24" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="{Binding QuietFixHint}" AutomationProperties.Name="Quiet fix">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock Text="&#xE9D9;" Style="{StaticResource BtnGlyph}" Margin="0,0,6,0" />
+              <TextBlock Text="Quiet fix" FontWeight="SemiBold" VerticalAlignment="Center" Style="{StaticResource ShellDetail}" />
+              <Ellipse Style="{StaticResource StateDot}" Tag="{Binding QuietFixState}" Margin="7,0,0,0" />
+            </StackPanel>
+          </Button>
+          <Border Style="{StaticResource Chip}" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="Phone monitoring: on while the phone dashboard server is running (Settings → Phone)">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock Text="&#xE8EA;" Style="{StaticResource BtnGlyph}" Margin="0,0,6,0" />
+              <TextBlock Text="Phone" FontWeight="SemiBold" VerticalAlignment="Center" Style="{StaticResource ShellDetail}" />
+              <Ellipse Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{StaticResource SubtleBrush}" /><Style.Triggers><DataTrigger Binding="{Binding Remote.Running}" Value="True"><Setter Property="Fill" Value="{StaticResource SuccessBrush}" /></DataTrigger></Style.Triggers></Style></Ellipse.Style></Ellipse>
+            </StackPanel>
+          </Border>
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">

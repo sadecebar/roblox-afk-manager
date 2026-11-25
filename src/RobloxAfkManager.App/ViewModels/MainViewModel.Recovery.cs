@@ -14,11 +14,15 @@ public sealed partial class MainViewModel
     private const int MaxRecoveriesPerHour = 4;
     private readonly Queue<DateTimeOffset> recoveryLog = new();
     // Only accounts with a saved login can be restarted, and each at most once per cooldown.
-    public bool AutoRecover { get => autoRecover; set => Set(ref autoRecover, value); }
+    public bool AutoRecover { get => autoRecover; set { if (Set(ref autoRecover, value)) { Raise(nameof(LoginFixState)); Raise(nameof(LoginFixHint)); } } }
+    public string LoginFixState => autoRecover ? "On" : "Off";
+    public string LoginFixHint => autoRecover ? "Login restart is on: an account whose Roblox login was ended is closed and reopened. Click to turn it off." : "Login restart is off. Click to turn it on: an account whose Roblox login was ended is closed and reopened.";
     // A joined client that logs almost nothing for ten minutes (see SessionLogParser.IsQuiet) is closed and reopened.
     // Off by default: log volume varies a lot between games and servers (healthy AFK clients were seen at 48 to 500 lines per ten minutes).
     private bool autoRestartQuiet = false;
-    public bool AutoRestartQuiet { get => autoRestartQuiet; set => Set(ref autoRestartQuiet, value); }
+    public bool AutoRestartQuiet { get => autoRestartQuiet; set { if (Set(ref autoRestartQuiet, value)) { Raise(nameof(QuietFixState)); Raise(nameof(QuietFixHint)); } } }
+    public string QuietFixState => autoRestartQuiet ? "On" : "Off";
+    public string QuietFixHint => autoRestartQuiet ? "Quiet-log restart is on (experimental): a client that logs under 100 lines in 10 minutes is restarted. Click to turn it off." : "Quiet-log restart is off (experimental). Click to turn it on.";
 
     // The per-client Restart button: always allowed, no cooldown or hourly cap, because the person asked for it.
     public AsyncCommand RestartClientCommand { get; private set; } = null!;
