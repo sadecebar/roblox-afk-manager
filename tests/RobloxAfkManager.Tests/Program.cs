@@ -42,6 +42,11 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Tests must never read or write a real person's settings, saved logins or Discord webhook.
+        string dataFolder = Path.Combine(Path.GetTempPath(), "rafk-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataFolder);
+        Environment.SetEnvironmentVariable(RobloxAfkManager.App.Services.AppFolders.OverrideVariable, dataFolder);
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { Directory.Delete(dataFolder, true); } catch (Exception) { } };
         if (args.Contains("--remote-demo")) { RemoteBrowserFixture.RunAsync().GetAwaiter().GetResult(); return 0; }
         Test("Preset layouts use the full working area without overlap", () =>
         {
@@ -480,6 +485,52 @@ internal static class Program
                     Check(fake.Requests[^1].Method == "DELETE" && !again.BoardEnabled);
                 }
                 Check(!File.Exists(Path.Combine(root, "board.txt")) || !File.ReadAllText(Path.Combine(root, "board.txt")).StartsWith("1"));
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("The status board can live in its own channel, apart from alerts and the log", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-boardchan-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                const string alerts = "https://discord.com/api/webhooks/123456789012345678/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+                const string boardHook = "https://discord.com/api/webhooks/987654321098765432/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+                var fake = new FakeDiscord();
+                var ok = RobloxAfkManager.App.Services.BoardState.Ok;
+                using (var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(60)))
+                {
+                    hook.SetBoard(true); Check(!hook.BoardEnabled, "a board needs somewhere to go");
+                    hook.Save(alerts, null); hook.SetBoard(true); Check(hook.BoardEnabled && !hook.BoardHasOwnWebhook);
+                    hook.QueueBoard([new BoardRow("alt1", ok, "Running")]);
+                    for (int i = 0; i < 40 && fake.Requests.Count < 1; i++) Thread.Sleep(50);
+                    Thread.Sleep(150);
+                    Check(fake.Requests.Count == 1 && fake.Requests[0].Url.Contains("123456789012345678"), "shared: the board starts in the alerts channel");
+                    // Give the board its own channel: the old board message is removed and a new one is posted in the new channel.
+                    hook.SaveBoardWebhook(boardHook); Check(hook.BoardHasOwnWebhook);
+                    hook.QueueBoard([new BoardRow("alt1", ok, "Running")]);
+                    for (int i = 0; i < 40 && fake.Requests.Count < 3; i++) Thread.Sleep(50);
+                    Thread.Sleep(150);
+                    Check(fake.Requests.Any(r => r.Method == "DELETE" && r.Url.Contains("123456789012345678") && r.Url.Contains("/messages/")), "the old board message was not tidied away");
+                    Check(fake.Requests[^1].Method == "POST" && fake.Requests[^1].Url.Contains("987654321098765432"), "the board did not move to its own channel");
+                    // Alerts still go to the alerts channel, not the board channel.
+                    int before = fake.Requests.Count;
+                    hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                    for (int i = 0; i < 40 && fake.Requests.Count <= before; i++) Thread.Sleep(50);
+                    Thread.Sleep(150);
+                    Check(fake.Requests[^1].Url.Contains("123456789012345678") && fake.Requests[^1].Method == "POST", "alerts must stay in the alerts channel");
+                }
+                string stored = string.Concat(Directory.GetFiles(root).Select(File.ReadAllText));
+                Check(!stored.Contains("BBBBBBBB") && !stored.Contains("987654321098765432"), "the board webhook must be stored encrypted");
+                using (var again = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(60)))
+                {
+                    Check(again.BoardHasOwnWebhook && again.BoardEnabled, "the board channel was not remembered");
+                    int before = fake.Requests.Count;
+                    again.ClearBoardWebhook(); Check(!again.BoardHasOwnWebhook);
+                    again.QueueBoard([new BoardRow("alt1", ok, "Running")]);
+                    for (int i = 0; i < 40 && !fake.Requests.Skip(before).Any(r => r.Method == "POST"); i++) Thread.Sleep(50);
+                    Thread.Sleep(100);
+                    Check(fake.Requests[^1].Method == "POST" && fake.Requests[^1].Url.Contains("123456789012345678"), "clearing the board channel should return the board to the alerts channel");
+                }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });

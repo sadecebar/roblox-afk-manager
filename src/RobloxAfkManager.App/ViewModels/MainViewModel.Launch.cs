@@ -130,7 +130,7 @@ public sealed partial class MainViewModel
     {
         launcher = accountLauncher ?? new AccountLauncher();
         vault = loginVault ?? new LoginVault();
-        settingsFolder = folder ?? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager");
+        settingsFolder = folder ?? AppFolders.Data;
         spacingSeconds = ReadSpacing(); gamePlaceId = ReadGame();
         OpenClosedCommand = new(OpenClosedAsync, () => HasClosedLogins, HandleError);
         OpenSelectedCommand = new(OpenSelectedAsync, () => !launching && gamePlaceId > 0 && SelectedCount > 0, HandleError);

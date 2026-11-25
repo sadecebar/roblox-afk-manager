@@ -6,7 +6,7 @@ namespace RobloxAfkManager.App.Services;
 
 public sealed class WorkspaceStore(string? path = null) : IWorkspaceStore
 {
-    private readonly string path = path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "workspace.json");
+    private readonly string path = path ?? Path.Combine(AppFolders.Data, "workspace.json");
     public WorkspaceSettings Read()
     {
         try

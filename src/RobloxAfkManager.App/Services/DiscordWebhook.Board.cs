@@ -22,7 +22,62 @@ public sealed partial class DiscordWebhook
     private Task? boardTask;
     private HttpStatusCode? lastStatus;
 
-    public bool BoardEnabled => boardEnabled && url is not null;
+    private string BoardWebhookFile => Path.Combine(folder, "webhook-board.dat");
+    // The status board can have its own channel. Without one it shares the alerts channel.
+    private string? BoardTarget => boardUrl ?? url;
+    public bool BoardEnabled => boardEnabled && BoardTarget is not null;
+    public bool BoardHasOwnWebhook => boardUrl is not null;
+
+    private void LoadBoardWebhook()
+    {
+        try
+        {
+            if (!File.Exists(BoardWebhookFile) || new FileInfo(BoardWebhookFile).Length > 16384) return;
+            var stored = JsonSerializer.Deserialize<Stored>(File.ReadAllText(BoardWebhookFile));
+            if (stored is null) return;
+            string plain = System.Text.Encoding.UTF8.GetString(LoginVault.Unprotect(Convert.FromBase64String(stored.Cipher)));
+            if (IsValidUrl(plain)) boardUrl = plain;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException or LoginVault.CryptographicException) { }
+    }
+
+    // A message can only be edited through the webhook that posted it, so changing the channel starts a new board message.
+    public void SaveBoardWebhook(string webhookUrl)
+    {
+        string clean = (webhookUrl ?? "").Trim();
+        if (!IsValidUrl(clean)) throw new ArgumentException("That doesn't look like a Discord webhook address. Copy it from the channel's Integrations → Webhooks page.");
+        Directory.CreateDirectory(folder);
+        string full = Path.GetFullPath(BoardWebhookFile), temporary = full + ".tmp";
+        try
+        {
+            File.WriteAllText(temporary, JsonSerializer.Serialize(new Stored(Convert.ToBase64String(LoginVault.Protect(System.Text.Encoding.UTF8.GetBytes(clean))), null)));
+            File.Move(temporary, full, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        MoveBoard(clean);
+    }
+
+    // Back to posting the board in the alerts channel.
+    public void ClearBoardWebhook()
+    {
+        try { if (File.Exists(BoardWebhookFile)) File.Delete(BoardWebhookFile); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        MoveBoard(null);
+    }
+
+    private void MoveBoard(string? newUrl)
+    {
+        string? oldTarget = BoardTarget;
+        lock (gate) boardUrl = newUrl;
+        RehomeBoard(oldTarget);
+    }
+
+    // The board's channel changed: forget the old message (tidying it away if it still exists) so a new one is posted.
+    private void RehomeBoard(string? oldTarget)
+    {
+        string? oldId; lock (gate) { oldId = boardId; boardId = null; boardSig = null; boardPending = null; boardLastRows = null; }
+        SaveBoard();
+        if (oldTarget is not null && oldId is not null && oldTarget != BoardTarget) _ = SendAsync(HttpMethod.Delete, oldTarget + "/messages/" + oldId, null);
+    }
 
     private void LoadBoard()
     {
@@ -49,10 +104,10 @@ public sealed partial class DiscordWebhook
     // Turning it off removes the message from the channel, so nothing stale is left behind.
     public void SetBoard(bool on)
     {
-        if (on == boardEnabled) return;
+        if (on == boardEnabled || (on && BoardTarget is null)) return;
         string? old; lock (gate) { boardEnabled = on; old = boardId; boardId = null; boardSig = null; boardPending = null; boardLastRows = null; }
         SaveBoard();
-        if (!on && old is not null && url is not null) _ = SendAsync(HttpMethod.Delete, url + "/messages/" + old, null);
+        if (!on && old is not null && BoardTarget is not null) _ = SendAsync(HttpMethod.Delete, BoardTarget + "/messages/" + old, null);
     }
 
     private void ForgetBoard() { lock (gate) { boardEnabled = false; boardId = null; boardSig = null; boardPending = null; boardLastRows = null; } SaveBoard(); }
@@ -101,16 +156,16 @@ public sealed partial class DiscordWebhook
 
     private async Task<bool> SendBoardAsync(BoardRow[] rows, bool closed)
     {
-        if (url is null) return false;
+        if (BoardTarget is not { } target) return false;
         var now = DateTimeOffset.UtcNow;
         if (boardId is { } id)
         {
-            var (ok, _) = await SendAsync(HttpMethod.Patch, url + "/messages/" + id, BoardPayload(rows, closed, now, edit: true)).ConfigureAwait(false);
+            var (ok, _) = await SendAsync(HttpMethod.Patch, target + "/messages/" + id, BoardPayload(rows, closed, now, edit: true)).ConfigureAwait(false);
             if (ok) return true;
             if (lastStatus != HttpStatusCode.NotFound) return false; // a hiccup: try the same message again later
             boardId = null; // deleted in Discord: start a new one
         }
-        var (posted, body) = await SendAsync(HttpMethod.Post, url + "?wait=true", BoardPayload(rows, closed, now, edit: false)).ConfigureAwait(false);
+        var (posted, body) = await SendAsync(HttpMethod.Post, target + "?wait=true", BoardPayload(rows, closed, now, edit: false)).ConfigureAwait(false);
         if (posted && MessageId(body) is { } created) { boardId = created; SaveBoard(); return true; }
         return false;
     }

@@ -16,8 +16,8 @@ public sealed record SavedLogin(long UserId, string Username);
 public sealed class LoginVault(string? path = null)
 {
     private sealed record Entry(long UserId, string Username, string Cipher);
-    private readonly string path = path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "logins.dat");
-    private List<Entry> entries = Load(path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "logins.dat"));
+    private readonly string path = path ?? Path.Combine(AppFolders.Data, "logins.dat");
+    private List<Entry> entries = Load(path ?? Path.Combine(AppFolders.Data, "logins.dat"));
     public IReadOnlyList<SavedLogin> Logins => entries.Select(e => new SavedLogin(e.UserId, e.Username)).ToArray();
 
     public void Save(long userId, string username, string cookie)

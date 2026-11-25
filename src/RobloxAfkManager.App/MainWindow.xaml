@@ -310,13 +310,12 @@
             <TextBlock Text="{Binding AwayHint}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
             <TextBlock Text="Discord alerts and automatic reopening only happen while you are away. At the PC nothing is sent or reopened, so closing a client yourself is always respected. When you step away, one message lists accounts that were already down." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
             <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
-            <TextBlock Text="Discord alerts" Style="{StaticResource PopupTitle}" FontSize="15" />
+            <TextBlock Text="Alerts and log channel" Style="{StaticResource PopupTitle}" FontSize="15" />
             <TextBlock Text="Get a Discord message when an account disconnects, its game or window closes, it freezes, or it loses its login, even when you're away from the PC." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
-            <TextBlock Text="Webhook address (channel settings → Integrations → Webhooks)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,0,0,4" />
+            <TextBlock Text="Webhook address for alerts, pings and the log (channel settings → Integrations → Webhooks)" TextWrapping="Wrap" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,0,0,4" />
             <PasswordBox x:Name="DiscordUrlBox" AutomationProperties.Name="Discord webhook address" />
             <TextBlock Text="Your Discord user ID (optional: this is what makes your phone ping)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
             <TextBox x:Name="DiscordUserBox" AutomationProperties.Name="Discord user ID" MaxLength="25" />
-            <CheckBox Content="Keep one live status message with every account (edited in place)" IsChecked="{Binding BoardEnabled}" IsEnabled="{Binding DiscordConfigured}" Margin="0,10,0,0" ToolTip="Posts a single message listing every account and its state, and edits it whenever something changes instead of sending new messages. Turning it off deletes the message." />
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
               <Button Click="SaveDiscord_Click" Style="{StaticResource CompactPrimaryButton}" AutomationProperties.Name="Save"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74E;" Style="{StaticResource BtnGlyph}" /><TextBlock Text="Save" VerticalAlignment="Center" /></StackPanel></Button>
               <Button Command="{Binding TestDiscordCommand}" Style="{StaticResource CompactButton}" Margin="6,0,0,0" AutomationProperties.Name="Test"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE724;" Style="{StaticResource BtnGlyph}" /><TextBlock Text="Test" VerticalAlignment="Center" /></StackPanel></Button>
@@ -324,6 +323,17 @@
             </StackPanel>
             <TextBlock Text="{Binding DiscordSummary}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
             <TextBlock Text="Alerts contain account names and what happened, and go only to Discord. The webhook is stored encrypted on this PC. If the PC itself shuts down, no alert can be sent." Foreground="{StaticResource SubtleBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0" />
+            <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
+            <TextBlock Text="Live status board" Style="{StaticResource PopupTitle}" FontSize="15" />
+            <TextBlock Text="One message that lists every account and is edited in place whenever something changes, so a channel stays quiet. Put it in its own channel, apart from the alerts." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
+            <CheckBox Content="Keep one live status message with every account (edited in place)" IsChecked="{Binding BoardEnabled}" Margin="0,0,0,0" ToolTip="Posts a single message listing every account and its state, and edits it whenever something changes instead of sending new messages. Turning it off deletes the message." />
+            <TextBlock Text="Board channel webhook (optional: leave empty to post the board in the alerts channel)" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,4" />
+            <PasswordBox x:Name="BoardUrlBox" AutomationProperties.Name="Board channel webhook address" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+              <Button Click="SaveBoardChannel_Click" Style="{StaticResource CompactPrimaryButton}" AutomationProperties.Name="Save board channel"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74E;" Style="{StaticResource BtnGlyph}" /><TextBlock Text="Save board channel" VerticalAlignment="Center" /></StackPanel></Button>
+              <Button Click="ClearBoardChannel_Click" Style="{StaticResource CompactButton}" Margin="6,0,0,0" IsEnabled="{Binding BoardHasOwnChannel}" ToolTip="Post the board in the alerts channel again" AutomationProperties.Name="Use the alerts channel for the board"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE711;" Style="{StaticResource BtnGlyph}" Margin="0" /></StackPanel></Button>
+            </StackPanel>
+            <TextBlock Text="{Binding BoardSummary}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
             </StackPanel>
             <StackPanel x:Name="SettingsLayoutPanel" Style="{StaticResource TabPanel}" Visibility="{Binding IsChecked, ElementName=SettingsTabLayout, Converter={StaticResource BoolVisibility}}">
             <TextBlock Text="Arrange windows" Style="{StaticResource PopupTitle}" />

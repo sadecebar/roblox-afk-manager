@@ -81,6 +81,12 @@ public partial class MainWindow : Window
         string url = DiscordUrlBox.Password; DiscordUrlBox.Clear();
         viewModel.SaveDiscord(url, DiscordUserBox.Text);
     }
+    private void SaveBoardChannel_Click(object sender, RoutedEventArgs e)
+    {
+        string url = BoardUrlBox.Password; BoardUrlBox.Clear();
+        viewModel.SaveBoardChannel(url);
+    }
+    private void ClearBoardChannel_Click(object sender, RoutedEventArgs e) => viewModel.ClearBoardChannel();
     private void ClearDiscord_Click(object sender, RoutedEventArgs e) { DiscordUserBox.Clear(); viewModel.ClearDiscord(); }
     private void Backup_Click(object sender, RoutedEventArgs e)
     {

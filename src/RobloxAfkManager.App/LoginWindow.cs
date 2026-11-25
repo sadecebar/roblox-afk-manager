@@ -15,7 +15,7 @@ namespace RobloxAfkManager.App;
 // the cookie stays valid. You type your own username and password; the manager never sees or stores them.
 public sealed class LoginWindow : Window
 {
-    public static string BrowserRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "browser");
+    public static string BrowserRoot => Path.Combine(AppFolders.Data, "browser");
     public static string ProfileFolder(long userId) => Path.Combine(BrowserRoot, userId.ToString());
 
     private readonly WebView2 web = new();

@@ -27,7 +27,7 @@ public sealed partial class DiscordWebhook : IDisposable
     private readonly object gate = new();
     private readonly List<(ActivityEntry Entry, AlertKind Kind)> queue = [];
     private readonly Queue<DateTimeOffset> sentLog = new();
-    private string? url;
+    private string? url, boardUrl;
     private Task? flushing;
     private bool disposed;
 
@@ -38,7 +38,7 @@ public sealed partial class DiscordWebhook : IDisposable
 
     public DiscordWebhook(string? folder = null, HttpMessageHandler? handler = null, TimeSpan? batchDelay = null, IAppLog? log = null, TimeSpan? boardInterval = null)
     {
-        this.folder = folder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager");
+        this.folder = folder ?? AppFolders.Data;
         path = Path.Combine(this.folder, "webhook.dat");
         this.boardInterval = boardInterval ?? TimeSpan.FromSeconds(10);
         ownsClient = handler is null;
@@ -46,7 +46,7 @@ public sealed partial class DiscordWebhook : IDisposable
         http.DefaultRequestHeaders.UserAgent.ParseAdd("RobloxAfkManager (alerts)");
         this.batchDelay = batchDelay ?? TimeSpan.FromSeconds(5);
         this.log = log;
-        Load(); LoadBoard();
+        Load(); LoadBoardWebhook(); LoadBoard();
     }
 
     public static bool IsValidUrl(string? value) => value is not null && UrlPattern.IsMatch(value.Trim());
@@ -81,7 +81,9 @@ public sealed partial class DiscordWebhook : IDisposable
             File.Move(temporary, full, true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        string? oldBoardTarget = BoardTarget;
         url = clean; UserId = id; LastResult = "";
+        if (boardUrl is null && oldBoardTarget != clean) RehomeBoard(oldBoardTarget);
     }
 
     // Changes only the user ID, keeping the saved webhook.
@@ -95,7 +97,7 @@ public sealed partial class DiscordWebhook : IDisposable
     {
         url = null; UserId = null; LastResult = "";
         lock (gate) queue.Clear();
-        ForgetBoard();
+        if (boardUrl is null) ForgetBoard();
         try { if (File.Exists(path)) File.Delete(path); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 

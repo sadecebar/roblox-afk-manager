@@ -11,7 +11,25 @@ public sealed partial class MainViewModel
     public AsyncCommand TestDiscordCommand { get; private set; } = null!;
     public bool DiscordConfigured => webhook.Configured;
     // One message that lists every account and is edited in place, instead of a stream of new messages.
-    public bool BoardEnabled { get => webhook.BoardEnabled; set { webhook.SetBoard(value); RaiseDiscord(); if (value) UpdateBoard(); } }
+    public bool BoardHasOwnChannel => webhook.BoardHasOwnWebhook;
+    public string BoardSummary => !webhook.BoardEnabled ? "Off." : webhook.BoardHasOwnWebhook ? "The board has its own channel." : "The board is posted in the alerts channel. Add a board webhook below to give it a channel of its own.";
+    public void SaveBoardChannel(string? url)
+    {
+        try { webhook.SaveBoardWebhook(url ?? ""); Warning = false; Message = "The status board will use this channel."; if (webhook.BoardEnabled) UpdateBoard(); }
+        catch (ArgumentException ex) { Warning = true; Message = ex.Message; }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { Warning = true; Message = "Could not save the board channel: " + ex.Message; }
+        RaiseDiscord();
+    }
+    public void ClearBoardChannel() { webhook.ClearBoardWebhook(); Warning = false; Message = "The status board now uses the alerts channel."; RaiseDiscord(); if (webhook.BoardEnabled) UpdateBoard(); }
+    public bool BoardEnabled
+    {
+        get => webhook.BoardEnabled;
+        set
+        {
+            if (value && !webhook.Configured && !webhook.BoardHasOwnWebhook) { Warning = true; Message = "Add a webhook first: either the alerts webhook above or a board channel webhook below."; RaiseDiscord(); return; }
+            webhook.SetBoard(value); RaiseDiscord(); if (value) UpdateBoard();
+        }
+    }
     public string DiscordUserId => webhook.UserId ?? "";
     public string DiscordSummary => !webhook.Configured ? "Not set up. Alerts stay on this PC."
         : "Alerts go to your Discord channel." + (webhook.UserId is null ? " Add your user ID to get a phone ping." : " You will be pinged.")
@@ -132,7 +150,7 @@ public sealed partial class MainViewModel
             if (Clients.Any(c => !c.IsIgnored && c.Label == label && (c.Session is null || c.Session.Phase == SessionPhase.Joined)))
                 Announce(new(DateTimeOffset.UtcNow, label, "Back online.", false), false);
     }
-    private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); RaiseIndicators(); Raise(nameof(BoardEnabled)); Raise(nameof(ShowAwayChip)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
+    private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); RaiseIndicators(); Raise(nameof(BoardEnabled)); Raise(nameof(BoardHasOwnChannel)); Raise(nameof(BoardSummary)); Raise(nameof(ShowAwayChip)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
 
     public void SaveDiscord(string? url, string? userId)
     {

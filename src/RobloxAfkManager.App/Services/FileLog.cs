@@ -7,7 +7,7 @@ namespace RobloxAfkManager.App.Services;
 public sealed class FileLog : IAppLog
 {
     private readonly object gate = new();
-    public string DirectoryPath { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "Logs");
+    public string DirectoryPath { get; } = Path.Combine(AppFolders.Data, "Logs");
     public void Write(string message, Exception? exception = null)
     {
         lock (gate)

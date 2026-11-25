@@ -11,7 +11,7 @@ public sealed class ClientNameStore : IClientNameStore
     private readonly Dictionary<ProcessIdentity, string> names = [];
     public ClientNameStore(string? path = null)
     {
-        this.path = path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "client-names.json");
+        this.path = path ?? Path.Combine(AppFolders.Data, "client-names.json");
         try
         {
             if (!File.Exists(this.path) || new FileInfo(this.path).Length > 65536) return;
