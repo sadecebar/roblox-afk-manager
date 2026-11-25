@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Incident log
+- **`incidents.log` records what happened overnight.** One line per event: time, account, what went wrong (including Roblox's own disconnect reason, such as "authentication failure") and what the manager did about it (closed and reopened from the saved login, or that the fix failed). It is written even when you're at the PC and rotates at 1 MB. It sits in the manager's settings folder.
+
 ### Fixes
 - **Disconnects are now detected.** The log reader missed the lines Roblox writes when the server connection ends ("Client has been disconnected with reason…", "Lost connection with reason…"), so a client left on an error screen (such as error 257) stayed "Joined" with no alert and no rejoin. Both are recognized now.
 - **Auto-rejoin waits 5 minutes** (was 60 seconds) before closing and restarting a disconnected client, so one that reconnects by itself is left alone.

@@ -7,7 +7,7 @@ namespace RobloxAfkManager.App.ViewModels;
 // Off until switched on. Limits keep a crash loop or a Roblox outage from turning into a stream of launches.
 public sealed partial class MainViewModel
 {
-    private sealed record Pending(string Label, DateTimeOffset Since, bool CloseFirst, WindowIdentity? Identity);
+    private sealed record Pending(string Label, DateTimeOffset Since, bool CloseFirst, WindowIdentity? Identity, string? Reason = null);
     private const int MaxReopensPerAccountPerHour = 3, MaxReopensPerHour = 24;
     private static readonly TimeSpan KickedDelay = TimeSpan.FromMinutes(5);
     // How long an account must stay gone before it is reopened, so a window that blinks out for a moment is left alone.
@@ -56,7 +56,7 @@ public sealed partial class MainViewModel
             foreach (var (id, tile) in current)
                 if (saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id)
                     && tile.Session is { Phase: SessionPhase.Disconnected, EventAt: { } at } && now - at >= KickedDelay)
-                    pendingReopen[id] = new(tile.Label, now, true, tile.Identity);
+                    pendingReopen[id] = new(tile.Label, now, true, tile.Identity, tile.Session.Reason);
         }
         // An account that is running again (and not disconnected) needs nothing more.
         foreach (var id in pendingReopen.Keys.ToArray())
@@ -102,13 +102,15 @@ public sealed partial class MainViewModel
             int pid = await launcher.LaunchSafelyAsync(cookie, gamePlaceId, CancellationToken.None, ticket);
             launchedPids[pid] = due; launchedAt[due] = DateTimeOffset.UtcNow;
             // Not announced to Discord as "back": the alert is edited when the account has really rejoined.
-            AddActivity(pending.Label, (pending.CloseFirst ? "Was kicked, so it was reopened" : "Closed while you were away, so it was reopened") + " automatically.", false, announce: false);
+            AddActivity(pending.Label, (pending.CloseFirst
+                ? $"Stayed disconnected for {(int)KickedDelay.TotalMinutes} minutes{(pending.Reason is { } why ? $" ({why.TrimEnd('.')})" : "")}. Fix: closed the stuck client and reopened it from its saved login."
+                : "Window closed while you were away. Fix: reopened it from its saved login."), false, announce: false);
             Warning = false; Message = $"{pending.Label} was reopened.";
         }
         catch (Exception ex)
         {
             log.Write($"Reopening account {due} failed.", ex);
-            AddActivity(pending.Label, "Could not be reopened automatically: " + ex.Message, true);
+            AddActivity(pending.Label, (pending.CloseFirst ? "Stayed disconnected" + (pending.Reason is { } r ? $" ({r.TrimEnd('.')})" : "") + ". " : "Window closed while you were away. ") + "Fix failed, it could not be restarted: " + ex.Message, true);
             Warning = true; Message = $"{pending.Label}: {ex.Message}";
         }
         finally { pendingReopen.Remove(due); reopening = false; RefreshLogins(); }

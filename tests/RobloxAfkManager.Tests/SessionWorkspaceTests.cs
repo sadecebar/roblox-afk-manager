@@ -42,6 +42,28 @@ internal static class SessionWorkspaceTests
                 Program.Check(SessionLogParser.Read(text + "\n" + Join(Now), Process, Now).Phase == SessionPhase.Joined);
             }
         });
+        test("Disconnect reason is read from the log, cleared by a rejoin, and written to the incident journal", () =>
+        {
+            string text = Join(Now.AddMinutes(-20)) + "\n" + Line(Now.AddMinutes(-6), "Network", "Client has been disconnected with reason: Disconnected due to authentication failure. Please upgrade.");
+            var lost = SessionLogParser.Read(text, Process, Now);
+            Program.Check(lost.Reason == "Disconnected due to authentication failure. Please upgrade.");
+            Program.Check(SessionLogParser.Read(text + "\n" + Join(Now), Process, Now).Reason is null);
+            var tracker = new SessionHealthTracker();
+            var alert = tracker.Observe([new ClientHealth(Process, "alt", false, "Open", lost)], Now).Single();
+            Program.Check(alert.Message.Contains("authentication failure"));
+            string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "journal-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var journal = new IncidentJournal(System.IO.Path.Combine(dir, "incidents.log"), 400);
+                journal.Write(alert);
+                journal.Write(new(Now, "alt", "Fix: closed and restarted.", false));
+                var lines = System.IO.File.ReadAllLines(journal.Path);
+                Program.Check(lines.Length == 2 && lines[0].Contains("PROBLEM | alt | Roblox's log reports a disconnect") && lines[1].Contains("INFO") && lines[1].EndsWith("Fix: closed and restarted."));
+                for (int i = 0; i < 5; i++) journal.Write(alert);
+                Program.Check(System.IO.File.Exists(journal.Path + ".previous"));
+            }
+            finally { try { System.IO.Directory.Delete(dir, true); } catch (System.IO.IOException) { } }
+        });
         test("Session parser resets duration on rejoin and distinguishes joining from a completed join", () =>
         {
             string text = Join(Now.AddMinutes(-20)) + "\n" + Line(Now.AddMinutes(-2), "Network", "Client:Disconnect");

@@ -16,9 +16,15 @@ public sealed partial class MainViewModel
     // Only accounts with a saved login can be restarted, and each at most once per cooldown.
     public bool AutoRecover { get => autoRecover; set => Set(ref autoRecover, value); }
 
+    private IncidentJournal? incidents;
+    // Where the morning-after record of problems and fixes is kept (next to the other settings).
+    public string IncidentLogPath => System.IO.Path.Combine(settingsFolder, "incidents.log");
+    private void Journal(ActivityEntry entry) => (incidents ??= new(IncidentLogPath)).Write(entry);
+
     private void AddActivity(string label, string message, bool warning, bool announce = true)
     {
         var entry = new ActivityEntry(DateTimeOffset.UtcNow, label, message, warning);
+        Journal(entry);
         Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);
         if (warning) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
         if (announce) Announce(entry, warning);

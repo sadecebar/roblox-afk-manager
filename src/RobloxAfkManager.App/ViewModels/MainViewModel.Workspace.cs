@@ -145,6 +145,7 @@ public sealed partial class MainViewModel
             c.IsIgnored || (RequiresProfileIdentification && c.AccountId is null), c.Status, c.Session)), DateTimeOffset.UtcNow);
         foreach (var entry in events)
         {
+            Journal(entry);
             Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);
             if (entry.Warning) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
             Announce(entry, entry.Warning);
