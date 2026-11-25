@@ -60,7 +60,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public MainViewModel(IWindowSystem? windowSystem = null, IAppLog? appLog = null, IProcessResourceSystem? resourceSystem = null, IWorkingSetSystem? workingSetSystem = null,
         IAccountNameLookup? accountNameLookup = null, IClientNameStore? clientNameStore = null, IWorkspaceStore? workspaceStore = null,
-        IAccountLauncher? accountLauncher = null, LoginVault? loginVault = null, string? settingsFolder = null, DiscordWebhook? discordWebhook = null)
+        IAccountLauncher? accountLauncher = null, LoginVault? loginVault = null, string? settingsFolder = null, DiscordWebhook? discordWebhook = null, IUserIdle? userIdle = null)
     {
         log = appLog ?? new FileLog(); windows = windowSystem ?? new Win32WindowSystem(log); manager = new(windows, log);
         accountNames = accountNameLookup ?? (windows is Win32WindowSystem ? new LogAccountNameLookup() : null);
@@ -68,7 +68,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Remote = new(windows.IsCurrent, log);
         resources = new(resourceSystem ?? new Win32ProcessResources(), log);
         memoryCaps = new(workingSetSystem ?? new Win32ProcessResources(), log);
-        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster(); InitializeLaunch(accountLauncher, loginVault, settingsFolder); InitializeDiscord(discordWebhook); InitializePlacements();
+        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster(); InitializeLaunch(accountLauncher, loginVault, settingsFolder); InitializeDiscord(discordWebhook, userIdle); InitializePlacements();
         selectedLayout = Layouts[1];
         DetectCommand = new(() => RefreshAsync(true), () => !Busy, HandleError);
         ArrangeCommand = new(ArrangeAsync, () => !Busy && IncludedCount > 0 && SelectedMonitor is not null, HandleError);

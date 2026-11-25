@@ -80,6 +80,7 @@ internal static class UiSmoke
             Program.Check(listener.Errors.Count == 0, string.Join(Environment.NewLine, listener.Errors));
             VerifyActivityPanel();
             VerifyOfflinePanel();
+            VerifySettingsPanel();
         }
         finally
         {
@@ -133,7 +134,7 @@ internal static class UiSmoke
         var shellBounds = new Rect(0, 0, width, height); shellBounds.Inflate(1, 1);
         var modes = (FrameworkElement)window.FindName("PreviewModes");
         Program.Check(shellBounds.Contains(modes.TransformToAncestor(root).TransformBounds(new Rect(modes.RenderSize))), "Preview mode selector is clipped");
-        foreach (string control in new[] { "ResourceButton", "MobileButton", "IgnoredButton", "RefreshButton", "RestoreWindowsButton", "ActivityButton" })
+        foreach (string control in new[] { "SettingsButton", "IgnoredButton", "RefreshButton", "RestoreWindowsButton", "ActivityButton" })
         {
             var button = (Button)window.FindName(control);
             Program.Check(shellBounds.Contains(button.TransformToAncestor(root).TransformBounds(new Rect(button.RenderSize))), $"{control} is clipped at {width}x{height}");
@@ -166,6 +167,45 @@ internal static class UiSmoke
             NativeSmoke.Descendants(popup.Child).OfType<Button>().Single(b => Equals(b.Content, "Clear")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
             Program.Check(!vm.HasActivity && store.Read().History.Count == 0, "Clear did not remove stored history");
             popup.IsOpen = false;
+        }
+        finally { host.Close(); Pump(); }
+    }
+    private static void VerifySettingsPanel()
+    {
+        using var vm = new MainViewModel(new FakeWindowSystem(2), new TestLog(), workspaceStore: new MemoryWorkspaceStore());
+        var host = new MainWindow(vm) { ShowActivated = false, WindowState = WindowState.Normal, Width = 1100, Height = 760 };
+        try
+        {
+            host.Show(); PumpUntil(() => !vm.Busy, TimeSpan.FromSeconds(5));
+            ((Button)host.FindName("SettingsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
+            var popup = (System.Windows.Controls.Primitives.Popup)host.FindName("SettingsPopup");
+            Program.Check(popup.IsOpen, "Settings did not open");
+            var tabs = new (string Tab, string Panel, Func<FrameworkElement, bool> Has)[]
+            {
+                ("SettingsTabAccounts", "SettingsAccountsPanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Log in to add an account…")) && NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Back up settings…"))),
+                ("SettingsTabAlerts", "SettingsAlertsPanel", p => NativeSmoke.Descendants(p).OfType<ComboBox>().Any() && NativeSmoke.Descendants(p).OfType<PasswordBox>().Any() && NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Test"))),
+                ("SettingsTabLayout", "SettingsLayoutPanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Arrange now"))),
+                ("SettingsTabPlans", "SettingsPlansPanel", p => NativeSmoke.Descendants(p).OfType<ComboBox>().Any()),
+                ("SettingsTabPhone", "SettingsPhonePanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Start monitoring"))),
+            };
+            Directory.CreateDirectory("artifacts");
+            foreach (var (tab, panelName, has) in tabs)
+            {
+                ((RadioButton)host.FindName(tab)).IsChecked = true; Pump();
+                foreach (var other in tabs)
+                {
+                    var panel = (FrameworkElement)host.FindName(other.Panel);
+                    Program.Check((panel.Visibility == Visibility.Visible) == (other.Panel == panelName), $"{other.Panel} visibility is wrong while {tab} is selected");
+                }
+                Program.Check(has((FrameworkElement)host.FindName(panelName)), $"{panelName} is missing its controls");
+                var surface = (FrameworkElement)popup.Child; surface.UpdateLayout();
+                var bitmap = new RenderTargetBitmap((int)Math.Ceiling(surface.ActualWidth), (int)Math.Ceiling(surface.ActualHeight), 96, 96, PixelFormats.Pbgra32); bitmap.Render(surface);
+                var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using var stream = File.Create($"artifacts/settings-{panelName.Replace("Settings", "").Replace("Panel", "").ToLowerInvariant()}.png"); encoder.Save(stream);
+            }
+            popup.IsOpen = false;
+            // The old header buttons are gone: everything lives in Settings now.
+            Program.Check(host.FindName("ArrangeButton") is null && host.FindName("ResourceButton") is null && host.FindName("MobileButton") is null, "Old header tabs still exist");
         }
         finally { host.Close(); Pump(); }
     }

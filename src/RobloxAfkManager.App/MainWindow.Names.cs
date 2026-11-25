@@ -15,7 +15,7 @@ public partial class MainWindow
 
     private void OpenNameEditor(ClientTileViewModel client, FrameworkElement anchor)
     {
-        IgnoredPopup.IsOpen = ResourcePopup.IsOpen = MobilePopup.IsOpen = ActivityPopup.IsOpen = OfflinePopup.IsOpen = false;
+        IgnoredPopup.IsOpen = SettingsPopup.IsOpen = ActivityPopup.IsOpen = OfflinePopup.IsOpen = false;
         NamePopup.DataContext = client;
         NamePopup.PlacementTarget = anchor;
         ClientNameInput.Text = client.CustomName ?? client.DetectedName ?? "";

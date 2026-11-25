@@ -140,6 +140,7 @@ public sealed partial class MainViewModel
     }
     private void ObserveHealth()
     {
+        UpdateAway();
         var events = health.Observe(Clients.Select(c => new ClientHealth(ProcessIdentity.From(c.Identity), c.Label,
             c.IsIgnored || (RequiresProfileIdentification && c.AccountId is null), c.Status, c.Session)), DateTimeOffset.UtcNow);
         foreach (var entry in events)

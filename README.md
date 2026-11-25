@@ -81,8 +81,9 @@ Away from your PC? The manager can message a Discord channel when something goes
 - Roblox **ended an account's login** (and whether the automatic restart worked)
 - an account **came back** after one of the above
 
-Open **Activity → Discord alerts**, paste a channel webhook address (channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL), and press **Test**. Add your Discord user ID if you want your phone to buzz: Discord only notifies you if you are mentioned, so without it messages arrive silently in the channel.
+Open **Settings → Alerts**, paste a channel webhook address (channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL), and press **Test**. Add your Discord user ID if you want your phone to buzz: Discord only notifies you if you are mentioned, so without it messages arrive silently in the channel.
 
+- **Only when you're away.** A chip in the header shows **At PC** or **Away**. By default the manager treats you as away after 5 minutes without keyboard or mouse input (change the time, or force Away / At PC, in **Settings → Alerts**; clicking the chip cycles the modes). At the PC nothing is sent, so closing a client yourself never pings you. When you step away, you get one quiet message listing accounts that were already down, and from then on problems ping you.
 - Several events close together are sent as **one message**, so twelve accounts dropping at once is one ping, not twelve. At most 30 messages an hour.
 - The webhook address is a secret. It is stored **encrypted for your Windows user**, sent only to Discord, and never logged. **Turn off** deletes it. If it ever leaks, delete the webhook in Discord.
 - Messages contain account names (as shown on the cards), a short description and a time. Nothing else leaves your PC. Alerts can only mention you: nobody else, and never `@everyone`.
@@ -108,7 +109,7 @@ No installer, no admin rights. Settings live in `%LOCALAPPDATA%\RobloxAfkManager
 1. Open your Roblox clients, then start the manager. Cards appear on their own.
 2. Keep games **not minimized** so their previews stay live. Covering them with other windows is fine.
 3. Click **Ignore** on the account you're actively playing.
-4. Optional: open **Plans**, pick **Low**, and choose **Apply to visible clients** to make background clients lighter on your CPU.
+4. Optional: open **Settings → Plans**, pick **Low**, and choose **Apply to visible clients** to make background clients lighter on your CPU.
 5. Glance at the header. **All clear** means every included client looks healthy.
 
 Start with two clients to get a feel for it before scaling up.
@@ -125,11 +126,10 @@ Start with two clients to get a feel for it before scaling up.
 | **Ignore** | Hides the client and excludes it from everything else. |
 | **Refresh** | Re-detects clients and retries previews. |
 | **Restore windows** | Restores clients that were minimized outside the manager. |
-| **Offline** | Accounts that ran recently but are closed now. Copy a name, or **Forget** one you closed on purpose. Also where saved logins, the game to open and **Open closed** live. |
-| **Arrange** | Puts the game windows on a grid on the monitor you choose. Optionally maximizes one main client. **Save positions** remembers where each window sits. |
-| **Activity** | Recent events, desktop notification toggle, Clear, and **Discord alerts**. |
-| **Plans** | Resource plans and the RAM limit. |
-| **Mobile** | Starts or stops phone monitoring and shows the access code. |
+| **Offline** | Accounts that ran recently but are closed now. Copy a name, or **Forget** one you closed on purpose. |
+| **Activity** | Recent events, desktop notification toggle, Clear. |
+| **Settings** | Five tabs. **Accounts**: saved logins, the game to open, Open closed / Open selected, backups. **Alerts**: Discord alerts and Away mode. **Layout**: arrange windows and save positions. **Plans**: resource plans and the RAM limit. **Phone**: phone monitoring and its access code. |
+| **At PC / Away** chip | Shows when Discord alerts are active (only with Discord alerts set up). Click to switch between Automatic, Always away and At PC. |
 | **Ignored** | Lists ignored clients, restores original window placements. |
 
 ## 📊 Resource plans
@@ -154,8 +154,8 @@ Everything above works without this. It only matters if you want the manager to 
 - Sends short alert messages (account name, what happened, when) to your Discord webhook, only if you add one.
 - **Open closed** (and a per-account **Open**) starts Roblox for every saved account that isn't running, one every 10 seconds, in the game you choose.
 - **Open selected** starts only the accounts you tick. **Seconds between accounts** (5 to 120, default 10) sets the gap between launches.
-- **Game to open:** paste a `roblox.com/games/…` link or a place id in the Offline panel. Nothing is opened until you set one.
-- **Arrange** puts the windows on a grid on the monitor you pick, and can maximize one main client. **Save positions** remembers each window's spot, and they return there when the accounts are reopened.
+- **Game to open:** paste a `roblox.com/games/…` link or a place id in **Settings → Accounts**. Nothing is opened until you set one.
+- **Arrange** (Settings → Layout) puts the windows on a grid on the monitor you pick, and can maximize one main client. **Save positions** remembers each window's spot, and they return there when the accounts are reopened.
 - **Restart an account when Roblox ends its login** (off by default). When a client's log shows a burst of "401 Unauthorized" answers, its login was ended and it will freeze and get kicked. The manager then closes and reopens just that account. At most 4 restarts an hour overall, and one per account every 20 minutes. Every restart is listed in **Activity**.
 
 **How an account gets saved**
@@ -170,7 +170,7 @@ The manager asks Roblox for a launch ticket with the saved session, then starts 
 **Things to know**
 - **A saved session is as powerful as your password.** Anyone who can run programs as your Windows user could use it. Don't use this on a PC you share. Logging out of an account on roblox.com, or changing its password, ends the saved session and you add it again.
 - **Running several Roblox clients at once** needs Roblox's single-instance check to be lifted, which this manager does not do. Use whatever you already use for that. The manager only starts the clients. If Roblox refuses a second client, the manager says so instead of failing silently.
-- **Back up settings… / Restore…** (Offline panel) saves and loads names, card order, ignored accounts and window positions. Logins are never included in a backup.
+- **Back up settings… / Restore…** (Settings → Accounts) saves and loads names, card order, ignored accounts and window positions. Logins are never included in a backup.
 - Roblox's rules decide whether multiple accounts and AFK farming are allowed for the game you play. Using this tool doesn't make anything permitted. Treat it as your responsibility and read the [Terms of Use](https://en.help.roblox.com/hc/en-us/articles/115004647846).
 - It sends only what the website itself would: a plain, honest `User-Agent` naming this tool, no disguise as a browser or the Roblox client, and no clicking or typing into Roblox's pages.
 - An account that Roblox's own app or a browser also has logged in can be signed out by that. If an account keeps losing its login, turn on the restart option, or log in again with **Login**.
@@ -179,7 +179,7 @@ The manager asks Roblox for a launch ticket with the saved session, then starts 
 
 The phone page is **read-only**: it can't click, rejoin or change anything.
 
-1. In the manager, open **Mobile → Start monitoring** and copy the access code.
+1. In the manager, open **Settings → Phone → Start monitoring** and copy the access code.
 2. Install [Tailscale](https://tailscale.com/download) on the PC and your phone, signed in to the same account.
 3. On the PC, run:
    ```powershell

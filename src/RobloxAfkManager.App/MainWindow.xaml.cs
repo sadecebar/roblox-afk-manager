@@ -18,7 +18,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = this.viewModel = viewModel;
-        foreach (var popup in new[] { IgnoredPopup, ResourcePopup, MobilePopup, NamePopup, ActivityPopup, OfflinePopup })
+        foreach (var popup in new[] { IgnoredPopup, NamePopup, ActivityPopup, OfflinePopup })
         {
             popup.PopupAnimation = SystemParameters.ClientAreaAnimation ? PopupAnimation.Fade : PopupAnimation.None;
             popup.Opened += (_, _) =>
@@ -37,13 +37,13 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => await viewModel.RefreshAsync();
         viewModel.AlertRaised += OnAlert;
         Closed += (_, _) => { viewModel.AlertRaised -= OnAlert; desktopAlerts?.Dispose(); viewModel.Dispose(); };
-        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && (IgnoredPopup.IsOpen || ResourcePopup.IsOpen || MobilePopup.IsOpen || NamePopup.IsOpen || ActivityPopup.IsOpen || OfflinePopup.IsOpen)) { IgnoredPopup.IsOpen = false; ResourcePopup.IsOpen = false; MobilePopup.IsOpen = false; NamePopup.IsOpen = false; ActivityPopup.IsOpen = false; OfflinePopup.IsOpen = false; e.Handled = true; } };
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && (IgnoredPopup.IsOpen || SettingsPopup.IsOpen || NamePopup.IsOpen || ActivityPopup.IsOpen || OfflinePopup.IsOpen)) { IgnoredPopup.IsOpen = false; SettingsPopup.IsOpen = false; NamePopup.IsOpen = false; ActivityPopup.IsOpen = false; OfflinePopup.IsOpen = false; e.Handled = true; } };
     }
     private void WorkspaceRoot_SizeChanged(object sender, SizeChangedEventArgs e) => WorkspaceAppearance.SetIsCompact(WorkspaceRoot, e.NewSize.Width < 980);
     private void TogglePanel(Popup target)
     {
         bool open = !target.IsOpen;
-        IgnoredPopup.IsOpen = ResourcePopup.IsOpen = MobilePopup.IsOpen = NamePopup.IsOpen = ActivityPopup.IsOpen = OfflinePopup.IsOpen = false;
+        IgnoredPopup.IsOpen = SettingsPopup.IsOpen = NamePopup.IsOpen = ActivityPopup.IsOpen = OfflinePopup.IsOpen = false;
         target.IsOpen = open;
     }
     private async void LoginNew_Click(object sender, RoutedEventArgs e) => await RunLoginAsync(null);
@@ -83,12 +83,11 @@ public partial class MainWindow : Window
         string cookie = CookieBox.Password; CookieBox.Clear();
         await viewModel.AddLoginAsync(cookie);
     }
-    private void ArrangeButton_Click(object sender, RoutedEventArgs e) => TogglePanel(ArrangePopup);
+    private void SettingsButton_Click(object sender, RoutedEventArgs e) => TogglePanel(SettingsPopup);
+    private void AwayChip_Click(object sender, RoutedEventArgs e) => viewModel.CycleAway();
     private void ClearMain_Click(object sender, RoutedEventArgs e) => viewModel.MainClient = null;
-    private void ArrangeNow_Click(object sender, RoutedEventArgs e) => ArrangePopup.IsOpen = false;
+    private void ArrangeNow_Click(object sender, RoutedEventArgs e) => SettingsPopup.IsOpen = false;
     private void IgnoredButton_Click(object sender, RoutedEventArgs e) => TogglePanel(IgnoredPopup);
-    private void ResourceButton_Click(object sender, RoutedEventArgs e) => TogglePanel(ResourcePopup);
-    private void MobileButton_Click(object sender, RoutedEventArgs e) => TogglePanel(MobilePopup);
     private void ActivityButton_Click(object sender, RoutedEventArgs e) { TogglePanel(ActivityPopup); if (ActivityPopup.IsOpen) viewModel.MarkActivityRead(); }
     private void OfflineButton_Click(object sender, RoutedEventArgs e) => TogglePanel(OfflinePopup);
     private void CopyOfflineName_Click(object sender, RoutedEventArgs e)

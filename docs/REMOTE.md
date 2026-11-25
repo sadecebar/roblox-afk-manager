@@ -6,7 +6,7 @@ The optional mobile dashboard is read-only. Desktop previews, ignoring, resource
 
 Close the old manager normally so it restores any policies/limits it applied. Run `RobloxAfkManager.exe` from the extracted release folder (or the `artifacts/RobloxAfkManager-v<version>-win-x64` package if you built it yourself). Install both **.NET 10 Desktop Runtime x64** and **ASP.NET Core Runtime 10 x64** from [Microsoft's .NET 10 downloads](https://dotnet.microsoft.com/en-us/download/dotnet/10.0). The .NET 10 SDK for Windows also supplies both for development.
 
-In the manager, choose **Mobile → Start monitoring**. Copy the displayed access code. On the same PC, open `http://127.0.0.1:8765` and paste it. Check that two included clients produce real images before setting up remote access. The random 48-character code changes after Stop/Start or a manager restart. Anyone who has both network access and this code can view the included clients. It is never put in URLs or logs.
+In the manager, choose **Settings → Phone → Start monitoring**. Copy the displayed access code. On the same PC, open `http://127.0.0.1:8765` and paste it. Check that two included clients produce real images before setting up remote access. The random 48-character code changes after Stop/Start or a manager restart. Anyone who has both network access and this code can view the included clients. It is never put in URLs or logs.
 
 ## Private access from Windows to iPhone
 
@@ -28,7 +28,7 @@ In the manager, choose **Mobile → Start monitoring**. Copy the displayed acces
 
 If your tailnet includes other people, restrict access to this PC's TCP 443 (or your selected Serve port) using your tailnet's [access controls](https://tailscale.com/docs/features/access-control). Review device membership and remove devices you do not trust. The dashboard's additional code is required even over Tailscale. Sharing the code alone does not provide a network path.
 
-To stop monitoring, press **Mobile → Stop** or close the manager normally. To disable only this Serve endpoint, run `tailscale serve --bg --https=443 off` (use the selected port and the same flags used to enable it). `tailscale serve reset` clears all Serve configuration on the device, including unrelated services, so do not use it for a shared setup. Serve can remain configured while the manager is off; it cannot serve game data without the local server. See the [Serve command reference](https://tailscale.com/docs/reference/tailscale-cli/serve).
+To stop monitoring, press **Settings → Phone → Stop** or close the manager normally. To disable only this Serve endpoint, run `tailscale serve --bg --https=443 off` (use the selected port and the same flags used to enable it). `tailscale serve reset` clears all Serve configuration on the device, including unrelated services, so do not use it for a shared setup. Serve can remain configured while the manager is off; it cannot serve game data without the local server. See the [Serve command reference](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
 ## What the phone shows
 

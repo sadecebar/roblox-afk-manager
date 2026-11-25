@@ -190,7 +190,7 @@ public sealed partial class MainViewModel
     private async Task LaunchAsync(SavedLogin[] targets)
     {
         if (launching) return;
-        if (gamePlaceId == 0) { Warning = true; Message = "Paste a game link first (Offline panel, Game)."; return; }
+        if (gamePlaceId == 0) { Warning = true; Message = "Paste a game link first (Settings → Accounts → Game)."; return; }
         if (targets.Length == 0) { Warning = false; Message = "Every saved account is already running or starting."; return; }
         launching = true; Raise(nameof(HasClosedLogins)); Raise(nameof(OpenClosedLabel)); OpenClosedCommand.Notify(); OpenSelectedCommand.Notify();
         int opened = 0; var failures = new List<string>();

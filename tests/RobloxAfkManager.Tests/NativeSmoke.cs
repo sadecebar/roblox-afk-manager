@@ -222,14 +222,15 @@ internal static class NativeSmoke
         try
         {
             host.Show(); UiSmoke.PumpUntil(() => !vm.Busy, TimeSpan.FromSeconds(5));
-            ((Button)host.FindName("MobileButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); UiSmoke.Pump();
-            var popup = (System.Windows.Controls.Primitives.Popup)host.FindName("MobilePopup");
+            ((Button)host.FindName("SettingsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); UiSmoke.Pump();
+            var popup = (System.Windows.Controls.Primitives.Popup)host.FindName("SettingsPopup");
+            ((RadioButton)host.FindName("SettingsTabPhone")).IsChecked = true; UiSmoke.Pump(); var phone = (FrameworkElement)host.FindName("SettingsPhonePanel");
             Program.Check(popup.IsOpen);
-            var start = Descendants(popup.Child).OfType<Button>().Single(b => Equals(b.Content, "Start monitoring"));
+            var start = Descendants(phone).OfType<Button>().Single(b => Equals(b.Content, "Start monitoring"));
             Program.Check(start.Command?.CanExecute(null) == true); start.Command!.Execute(null);
             UiSmoke.PumpUntil(() => !vm.Remote.Busy, TimeSpan.FromSeconds(10));
             Program.Check(vm.Remote.Running && vm.Remote.AccessCode.Length == 48, vm.Remote.Status);
-            var codeField = Descendants(popup.Child).OfType<TextBox>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Dashboard access code");
+            var codeField = Descendants(phone).OfType<TextBox>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Dashboard access code");
             Program.Check(codeField.Text == vm.Remote.AccessCode && codeField.IsReadOnly);
             popup.IsOpen = false;
             host.Close(); UiSmoke.PumpUntil(() => !host.IsVisible && !vm.Remote.Running, TimeSpan.FromSeconds(10));
@@ -334,19 +335,20 @@ internal static class NativeSmoke
         try
         {
             host.Show(); UiSmoke.PumpUntil(() => !vm.Busy && vm.ClientCount == clients.Count, TimeSpan.FromSeconds(5));
-            ((Button)host.FindName("ResourceButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); UiSmoke.Pump();
-            var popup = (System.Windows.Controls.Primitives.Popup)host.FindName("ResourcePopup");
+            ((Button)host.FindName("SettingsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); UiSmoke.Pump();
+            var popup = (System.Windows.Controls.Primitives.Popup)host.FindName("SettingsPopup");
+            ((RadioButton)host.FindName("SettingsTabPlans")).IsChecked = true; UiSmoke.Pump(); var plans = (FrameworkElement)host.FindName("SettingsPlansPanel");
             Program.Check(popup.IsOpen, "Resource panel did not open");
-            var selector = Descendants(popup.Child).OfType<ComboBox>().Single();
+            var selector = Descendants(plans).OfType<ComboBox>().Single();
             Program.Check(selector.Items.Count == 3, "Resource choices not bound");
             selector.SelectedItem = ResourcePlan.Low; UiSmoke.Pump();
             Program.Check(vm.SelectedResourcePlan == ResourcePlan.Low);
-            var apply = Descendants(popup.Child).OfType<Button>().Single(b => ReferenceEquals(b.Command, vm.ApplyResourcePlanCommand));
+            var apply = Descendants(plans).OfType<Button>().Single(b => ReferenceEquals(b.Command, vm.ApplyResourcePlanCommand));
             Program.Check(apply.Command!.CanExecute(null)); apply.Command.Execute(null);
             UiSmoke.PumpUntil(() => !vm.Busy, TimeSpan.FromSeconds(5)); Program.Check(!vm.Warning, vm.Message);
             var memoryOriginals = new Dictionary<ProcessIdentity, WorkingSetLimits>();
             foreach (var id in originals.Keys) { using var process = system.OpenWorkingSet(id); memoryOriginals[id] = process.ReadLimits().Normalized; }
-            var applyCap = Descendants(popup.Child).OfType<Button>().Single(b => ReferenceEquals(b.Command, vm.ApplyMemoryCapCommand));
+            var applyCap = Descendants(plans).OfType<Button>().Single(b => ReferenceEquals(b.Command, vm.ApplyMemoryCapCommand));
             applyCap.Command!.Execute(null); UiSmoke.PumpUntil(() => !vm.Busy, TimeSpan.FromSeconds(5)); Program.Check(!vm.Warning, vm.Message);
             var panel = (FrameworkElement)popup.Child; panel.UpdateLayout();
             var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(panel.ActualWidth), (int)Math.Ceiling(panel.ActualHeight), 96, 96, PixelFormats.Pbgra32);

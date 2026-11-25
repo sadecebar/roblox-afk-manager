@@ -26,6 +26,7 @@ internal static class Program
             return new HttpResponseMessage(code) { Content = new StringContent(reply) };
         }
     }
+    private sealed class FakeIdle : RobloxAfkManager.App.Services.IUserIdle { public TimeSpan Idle; public TimeSpan IdleFor() => Idle; }
     private sealed class FixedAccountLookup(long userId) : IAccountDetailsLookup
     {
         public Task<IReadOnlyDictionary<ProcessIdentity, string>> ResolveAsync(IReadOnlyList<ProcessIdentity> processes, CancellationToken cancellationToken) =>
@@ -244,6 +245,46 @@ internal static class Program
                 fake.Replies.Enqueue((System.Net.HttpStatusCode.NotFound, ""));
                 string result = hook.TestAsync().GetAwaiter().GetResult();
                 Check(result.Contains("no longer exists") && !result.Contains("discord.com") && !result.Contains("abcdefghijkl"));
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Discord alerts follow away mode: silent at the PC, a summary when you step away, pings while away", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-away-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var fake = new FakeDiscord(); var idle = new FakeIdle();
+                var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50));
+                hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", "111222333444555666");
+                MainViewModel Make() => new(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(),
+                    loginVault: new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root, discordWebhook: hook, userIdle: idle);
+                using (var vm = Make())
+                {
+                    Check(!vm.IsAway && vm.AwayLabel == "At PC");
+                    vm.Announce(new(DateTimeOffset.UtcNow, "alt1", "Window closed or is no longer detected.", true), true);
+                    Thread.Sleep(400); Check(fake.Requests.Count == 0); // at the PC: nothing is sent
+                    idle.Idle = TimeSpan.FromMinutes(10);
+                    vm.RefreshAsync().GetAwaiter().GetResult();
+                    for (int i = 0; i < 40 && fake.Requests.Count == 0; i++) Thread.Sleep(50);
+                    Thread.Sleep(200);
+                    Check(vm.IsAway && vm.AwayLabel == "Away" && fake.Requests.Count == 1);
+                    using (var summary = System.Text.Json.JsonDocument.Parse(fake.Requests[0].Body))
+                    {
+                        Check(summary.RootElement.GetProperty("embeds")[0].GetProperty("description").GetString()!.Contains("alt1"));
+                        Check(summary.RootElement.GetProperty("content").ValueKind == System.Text.Json.JsonValueKind.Null); // the summary does not ping
+                    }
+                    vm.Announce(new(DateTimeOffset.UtcNow, "alt2", "Roblox's log reports a disconnect.", true), true);
+                    for (int i = 0; i < 40 && fake.Requests.Count < 2; i++) Thread.Sleep(50);
+                    Thread.Sleep(200);
+                    using (var ping = System.Text.Json.JsonDocument.Parse(fake.Requests[1].Body)) Check(ping.RootElement.GetProperty("content").GetString() == "<@111222333444555666>");
+                    vm.AwayModeIndex = 2; // "I'm at the PC", whatever the idle time
+                    Check(!vm.IsAway);
+                    vm.Announce(new(DateTimeOffset.UtcNow, "alt3", "Window closed or is no longer detected.", true), true);
+                    Thread.Sleep(400); Check(fake.Requests.Count == 2);
+                    vm.CycleAway(); Check(vm.AwayModeIndex == 0 && vm.IsAway); // back to automatic, still idle
+                }
+                using (var again = Make()) Check(again.AwayModeIndex == 0 && again.AwayMinutes == 5); // remembered
+                hook.Dispose();
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });

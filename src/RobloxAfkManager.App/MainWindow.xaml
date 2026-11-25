@@ -38,6 +38,12 @@
           <Border Style="{StaticResource Chip}" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="Combined working set of all detected clients, including ignored clients">
             <TextBlock VerticalAlignment="Center"><Run Text="{Binding TotalMemory, Mode=OneWay}" FontWeight="SemiBold" /><Run Text=" RAM" Foreground="{StaticResource MutedBrush}" /></TextBlock>
           </Border>
+          <Button x:Name="AwayChip" Click="AwayChip_Click" Style="{StaticResource ToolbarButton}" MinHeight="24" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="{Binding AwayHint}" AutomationProperties.Name="{Binding AwayLabel, StringFormat=Discord alerts mode: {0}}" Visibility="{Binding DiscordConfigured, Converter={StaticResource BoolVisibility}}">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{StaticResource SubtleBrush}" /><Style.Triggers><DataTrigger Binding="{Binding IsAway}" Value="True"><Setter Property="Fill" Value="{StaticResource AccentBrush}" /></DataTrigger></Style.Triggers></Style></Ellipse.Style></Ellipse>
+              <TextBlock Text="{Binding AwayLabel}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -59,26 +65,19 @@
               </Border>
             </StackPanel>
           </Button>
-          <Button x:Name="ArrangeButton" Click="ArrangeButton_Click" IsEnabled="{Binding IsIdle}" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" ToolTip="Tile clients on a monitor and maximize your main client" AutomationProperties.Name="Arrange windows">
-            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE80A;" Style="{StaticResource Glyph}" /><TextBlock Text="Arrange" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" /></StackPanel>
-          </Button>
-          <Button x:Name="ResourceButton" Click="ResourceButton_Click" IsEnabled="{Binding IsIdle}" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" ToolTip="{Binding ResourcePlanSummary}" AutomationProperties.Name="Resource plans">
-            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" Style="{StaticResource Glyph}" /><TextBlock Text="Plans" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" /></StackPanel>
-          </Button>
-          <Button x:Name="MobileButton" Click="MobileButton_Click" Margin="2,0,0,0" AutomationProperties.Name="Mobile monitoring" ToolTip="{Binding Remote.Status}">
-            <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ToolbarButton}"><Style.Triggers><DataTrigger Binding="{Binding Remote.Running}" Value="True"><Setter Property="Foreground" Value="{StaticResource TextBrush}" /><Setter Property="Background" Value="{StaticResource RaisedBrush}" /></DataTrigger></Style.Triggers></Style></Button.Style>
-            <StackPanel Orientation="Horizontal">
-              <Grid><TextBlock Text="&#xE8EA;" Style="{StaticResource Glyph}" />
-                <Ellipse Width="7" Height="7" Fill="{StaticResource SuccessBrush}" Stroke="{StaticResource CanvasBrush}" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-4,0" Visibility="{Binding Remote.Running, Converter={StaticResource BoolVisibility}}" />
-              </Grid>
-              <TextBlock Text="Mobile" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" />
-            </StackPanel>
-          </Button>
           <Button x:Name="IgnoredButton" Click="IgnoredButton_Click" IsEnabled="{Binding IsIdle}" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" ToolTip="Show ignored clients" AutomationProperties.Name="{Binding IgnoredMenuLabel}">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="&#xED1A;" Style="{StaticResource Glyph}" />
               <TextBlock Text="Ignored" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" />
               <Border Style="{StaticResource CountBadge}"><TextBlock Text="{Binding IgnoredCount}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+            </StackPanel>
+          </Button>
+          <Button x:Name="SettingsButton" Click="SettingsButton_Click" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" ToolTip="Accounts, Discord alerts, window layout, resource plans and phone monitoring" AutomationProperties.Name="Settings">
+            <StackPanel Orientation="Horizontal">
+              <Grid><TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" />
+                <Ellipse Width="7" Height="7" Fill="{StaticResource SuccessBrush}" Stroke="{StaticResource CanvasBrush}" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-4,0" ToolTip="Phone monitoring is on" Visibility="{Binding Remote.Running, Converter={StaticResource BoolVisibility}}" />
+              </Grid>
+              <TextBlock Text="Settings" VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource ShellDetail}" />
             </StackPanel>
           </Button>
         </StackPanel>
@@ -109,123 +108,8 @@
       </StackPanel>
     </Grid>
 
-    <!-- Mobile -->
-    <Popup x:Name="MobilePopup" PlacementTarget="{Binding ElementName=MobileButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True"
-           DataContext="{Binding PlacementTarget.DataContext.Remote, RelativeSource={RelativeSource Self}}">
-      <Border Style="{StaticResource PopupSurface}">
-        <ScrollViewer MaxHeight="480" VerticalScrollBarVisibility="Auto"><StackPanel>
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBlock Text="Mobile monitoring" Style="{StaticResource PopupTitle}" />
-            <Border Grid.Column="1" CornerRadius="10" Padding="9,2" VerticalAlignment="Center">
-              <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{StaticResource IdleSoftBrush}" /><Style.Triggers><DataTrigger Binding="{Binding Running}" Value="True"><Setter Property="Background" Value="{StaticResource SuccessSoftBrush}" /></DataTrigger></Style.Triggers></Style></Border.Style>
-              <TextBlock FontSize="11" FontWeight="SemiBold"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Off" /><Setter Property="Foreground" Value="{StaticResource MutedBrush}" /><Style.Triggers><DataTrigger Binding="{Binding Running}" Value="True"><Setter Property="Text" Value="Live" /><Setter Property="Foreground" Value="{StaticResource SuccessBrush}" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-            </Border>
-          </Grid>
-          <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,14" />
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <Button Content="Start monitoring" Command="{Binding StartCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,0" />
-            <Button Grid.Column="1" Content="Stop" Command="{Binding StopCommand}" Style="{StaticResource CompactButton}" />
-          </Grid>
-          <StackPanel Visibility="{Binding Running, Converter={StaticResource BoolVisibility}}" Margin="0,16,0,0">
-            <TextBlock Text="ACCESS CODE · CHANGES EACH START" Style="{StaticResource Overline}" />
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-              <TextBox Text="{Binding AccessCode, Mode=OneWay}" Style="{StaticResource CodeBox}" Foreground="{StaticResource TextBrush}" FontSize="14" TextWrapping="Wrap" AutomationProperties.Name="Dashboard access code" />
-              <Button Grid.Column="1" Click="CopyMobileCode_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" ToolTip="Copy access code" AutomationProperties.Name="Copy access code">
-                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8C8;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" /><TextBlock Text="Copy" VerticalAlignment="Center" /></StackPanel>
-              </Button>
-            </Grid>
-            <TextBlock Text="LOCAL TEST ADDRESS" Style="{StaticResource Overline}" Margin="0,12,0,6" />
-            <TextBox Text="{Binding LocalAddress, Mode=OneWay}" Style="{StaticResource CodeBox}" AutomationProperties.Name="Local monitoring address" />
-          </StackPanel>
-          <Border Style="{StaticResource Divider}" />
-          <TextBlock Text="AWAY FROM HOME" Style="{StaticResource Overline}" Margin="0,0,0,10" />
-          <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
-            <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top"><TextBlock Text="1" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentHoverBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-            <TextBlock Grid.Column="1" Text="Install Tailscale on this PC and on your phone, signed in to the same account." TextWrapping="Wrap" Margin="0,2,0,0" />
-          </Grid>
-          <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
-            <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top"><TextBlock Text="2" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentHoverBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-            <StackPanel Grid.Column="1">
-              <TextBlock Text="Run this on the PC:" Margin="0,2,0,6" />
-              <TextBox Text="tailscale serve --bg http://127.0.0.1:8765" Style="{StaticResource CodeBox}" TextWrapping="Wrap" AutomationProperties.Name="Tailscale Serve command" />
-            </StackPanel>
-          </Grid>
-          <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
-            <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top"><TextBlock Text="3" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentHoverBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-            <TextBlock Grid.Column="1" TextWrapping="Wrap" Margin="0,2,0,0"><Run Text="Open the HTTPS address Tailscale prints and enter the access code. Use private Serve, never public Funnel." /><Run Text=" Details: docs/REMOTE.md." Foreground="{StaticResource MutedBrush}" /></TextBlock>
-          </Grid>
-          <TextBlock Text="Read-only. Ignored clients stay hidden. Previews refresh about every 8 seconds while viewed and never move or restore a game. A locked desktop or minimized window can block previews." Foreground="{StaticResource SubtleBrush}" TextWrapping="Wrap" FontSize="11" />
-        </StackPanel></ScrollViewer>
-      </Border>
-    </Popup>
 
-    <!-- Plans -->
-    <Popup x:Name="ResourcePopup" PlacementTarget="{Binding ElementName=ResourceButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True"
-           DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-      <Border Style="{StaticResource PopupSurface}">
-        <StackPanel>
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBlock Text="Performance" Style="{StaticResource PopupTitle}" />
-            <Border Grid.Column="1" Style="{StaticResource Chip}" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Center"><TextBlock Text="{Binding ResourcePlanSummary}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource AccentHoverBrush}" /></Border>
-          </Grid>
-          <TextBlock Text="Windows priority for every included client, including new arrivals. Ignored clients keep their original settings." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,14" />
-          <TextBlock Text="PLAN" Style="{StaticResource Overline}" />
-          <ComboBox ItemsSource="{Binding ResourcePlans}" SelectedItem="{Binding SelectedResourcePlan}" IsEnabled="{Binding IsIdle}" AutomationProperties.Name="Resource plan" />
-          <TextBlock Text="{Binding ResourcePlanDescription}" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="0,10,0,6" />
-          <TextBlock Text="Plans adjust Windows priorities. They do not set FPS or limit RAM." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <Button Content="Apply to visible clients" Command="{Binding ApplyResourcePlanCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,0" />
-            <Button Grid.Column="1" Content="Reset all" Command="{Binding ResetResourcePlanCommand}" Style="{StaticResource CompactButton}" />
-          </Grid>
-          <Border Style="{StaticResource Divider}" />
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBlock Text="Resident RAM limit" Style="{StaticResource SectionHeading}" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Text="{Binding MemoryCapSummary}" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" />
-          </Grid>
-          <Border Background="{StaticResource WarningSoftBrush}" CornerRadius="8" Padding="10,8" Margin="0,10,0,10">
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /></Grid.ColumnDefinitions>
-              <TextBlock Text="&#xE7BA;" Style="{StaticResource Glyph}" FontSize="13" Foreground="{StaticResource WarningBrush}" VerticalAlignment="Top" Margin="0,1,9,0" />
-              <TextBlock Grid.Column="1" Text="Limits physical working-set RAM, not total allocated memory. 500 MiB can cause heavy paging, stutters or slow rejoins. Ignored clients stay exempt." Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap" FontSize="11" />
-            </Grid>
-          </Border>
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="80" /><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBox Text="{Binding MemoryCapInput, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsIdle}" MinHeight="32" Padding="8,4" FontFamily="{StaticResource MonoFont}" ToolTip="256–8192 MiB per included client" AutomationProperties.Name="Resident RAM limit in MiB" />
-            <TextBlock Grid.Column="1" Text="MiB" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="6,0,10,0" />
-            <Button Grid.Column="2" Content="Apply limit" Command="{Binding ApplyMemoryCapCommand}" Style="{StaticResource CompactButton}" Margin="0,0,8,0" />
-            <Button Grid.Column="3" Content="Off" Command="{Binding ResetMemoryCapCommand}" Style="{StaticResource CompactButton}" />
-          </Grid>
-          <TextBlock Text="Original settings come back when the manager closes normally." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,0" />
-        </StackPanel>
-      </Border>
-    </Popup>
 
-    <!-- Arrange -->
-    <Popup x:Name="ArrangePopup" PlacementTarget="{Binding ElementName=ArrangeButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-      <Border Style="{StaticResource PopupSurface}" Width="350">
-        <StackPanel>
-          <TextBlock Text="Arrange windows" Style="{StaticResource PopupTitle}" />
-          <TextBlock Text="Grid monitor" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" />
-          <ComboBox ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" DisplayMemberPath="Label" AutomationProperties.Name="Grid monitor" />
-          <TextBlock Text="Layout" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" />
-          <ComboBox ItemsSource="{Binding Layouts}" SelectedItem="{Binding SelectedLayout}" DisplayMemberPath="Label" AutomationProperties.Name="Grid layout" />
-          <TextBlock Text="Main client (maximized on the primary monitor)" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" TextWrapping="Wrap" />
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <ComboBox ItemsSource="{Binding Clients}" SelectedItem="{Binding MainClient}" DisplayMemberPath="Label" AutomationProperties.Name="Main client" />
-            <Button Grid.Column="1" Content="None" Click="ClearMain_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
-          </Grid>
-          <TextBlock Text="{Binding MainSummary}" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,8,0,14" />
-          <Button Content="Arrange now" Command="{Binding ArrangeCommand}" Click="ArrangeNow_Click" Style="{StaticResource CompactPrimaryButton}" />
-          <Border Style="{StaticResource Divider}" Margin="0,14,0,12" />
-          <TextBlock Text="Remember positions" Foreground="{StaticResource MutedBrush}" />
-          <TextBlock Text="Put the windows where you want them, then save. Each account opens in its own spot from now on." TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,4,0,8" />
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <Button Content="Save current positions" Command="{Binding SaveLayoutCommand}" Style="{StaticResource CompactButton}" />
-            <Button Grid.Column="1" Content="Clear" Command="{Binding ClearLayoutCommand}" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
-          </Grid>
-          <TextBlock Text="{Binding LayoutSummary2}" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,6,0,0" />
-        </StackPanel>
-      </Border>
-    </Popup>
 
     <!-- Ignored -->
     <Popup x:Name="IgnoredPopup" PlacementTarget="{Binding ElementName=IgnoredButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True"
@@ -308,38 +192,6 @@
             </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
           </ScrollViewer>
           <TextBlock Text="Ignored accounts never appear here. Forget hides an account until it runs again." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0" />
-          <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
-          <TextBlock Text="Saved logins" Style="{StaticResource PopupTitle}" />
-          <ItemsControl ItemsSource="{Binding SavedLogins}" Margin="0,8,0,0"><ItemsControl.ItemTemplate><DataTemplate>
-            <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-              <CheckBox IsChecked="{Binding Selected}" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Include in Open selected" AutomationProperties.Name="{Binding Name, StringFormat=Select {0}}" />
-              <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-              <TextBlock Grid.Column="2" Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="8,0" />
-              <Button Grid.Column="3" Content="Open" Command="{Binding DataContext.OpenLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource CompactButton}" MinHeight="26" Padding="10,2" Margin="0,0,4,0" AutomationProperties.Name="{Binding Name, StringFormat=Open {0}}" />
-              <Button Grid.Column="4" Content="Login" Click="LoginRow_Click" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" Margin="0,0,4,0" ToolTip="Open this account's own browser profile. If its session expired, log in once; otherwise this just refreshes the saved login." AutomationProperties.Name="{Binding Name, StringFormat=Log in again as {0}}" />
-              <Button Grid.Column="5" Content="Remove" Command="{Binding DataContext.RemoveLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" AutomationProperties.Name="{Binding Name, StringFormat=Remove saved login {0}}" />
-            </Grid>
-          </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-          <TextBlock Text="Game to open (roblox.com/games/… link or place id)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
-          <TextBox Text="{Binding GameLink, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Game link or place id" />
-          <CheckBox Content="Restart an account when Roblox ends its login" IsChecked="{Binding AutoRecover}" Margin="0,8,0,0" ToolTip="When a client's login is ended (it freezes, then gets kicked), the manager restarts just that account from its saved login. At most once per 20 minutes per account." />
-          <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="56" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBlock Text="Seconds between accounts" Foreground="{StaticResource SubtleBrush}" FontSize="11" VerticalAlignment="Center" />
-            <TextBox Grid.Column="2" Text="{Binding LaunchSpacingSeconds, UpdateSourceTrigger=LostFocus}" ToolTip="5 to 120. Roblox slows launches down if too many start at once." AutomationProperties.Name="Seconds between accounts" />
-          </Grid>
-          <Button Content="{Binding OpenSelectedLabel}" Command="{Binding OpenSelectedCommand}" Style="{StaticResource CompactButton}" Margin="0,8,0,0" ToolTip="Starts only the accounts you ticked above." />
-          <Button Content="{Binding OpenClosedLabel}" Command="{Binding OpenClosedCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,6,0,0" ToolTip="Starts the game below for every saved account that isn't running." />
-          <Button Content="Log in to add an account…" Click="LoginNew_Click" Style="{StaticResource CompactButton}" Margin="0,8,0,0" ToolTip="Opens Roblox's login page. Log in once and the account is saved; no cookie copying." />
-          <TextBlock Text="A saved login gives full access to the account: don't use this on a shared PC. Or add one by pasting its .ROBLOSECURITY cookie. It is stored encrypted for this Windows user and only sent to roblox.com." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,6" />
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <PasswordBox x:Name="CookieBox" AutomationProperties.Name="Session cookie" />
-            <Button Grid.Column="1" Content="Add" Click="AddLogin_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
-          </Grid>
-          <Border Style="{StaticResource Divider}" Margin="0,12,0,10" />
-          <StackPanel Orientation="Horizontal">
-            <Button Content="Back up settings…" Click="Backup_Click" Style="{StaticResource CompactButton}" ToolTip="Saves names, order, ignored accounts and window positions to a file. Logins are not included." />
-            <Button Content="Restore…" Click="Restore_Click" Style="{StaticResource CompactButton}" Margin="6,0,0,0" ToolTip="Loads a settings backup made with Back up settings." />
-          </StackPanel>
         </StackPanel>
       </Border>
     </Popup>
@@ -375,20 +227,187 @@
               </Grid>
             </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
           </ScrollViewer>
-          <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
-          <TextBlock Text="Discord alerts" Style="{StaticResource PopupTitle}" FontSize="15" />
-          <TextBlock Text="Get a Discord message when an account disconnects, its game or window closes, it freezes, or it loses its login, even when you're away from the PC." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
-          <TextBlock Text="Webhook address (channel settings → Integrations → Webhooks)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,0,0,4" />
-          <PasswordBox x:Name="DiscordUrlBox" AutomationProperties.Name="Discord webhook address" />
-          <TextBlock Text="Your Discord user ID (optional: this is what makes your phone ping)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
-          <TextBox x:Name="DiscordUserBox" AutomationProperties.Name="Discord user ID" MaxLength="25" />
-          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-            <Button Content="Save" Click="SaveDiscord_Click" Style="{StaticResource CompactPrimaryButton}" />
-            <Button Content="Test" Command="{Binding TestDiscordCommand}" Style="{StaticResource CompactButton}" Margin="6,0,0,0" />
-            <Button Content="Turn off" Click="ClearDiscord_Click" Style="{StaticResource CompactButton}" Margin="6,0,0,0" IsEnabled="{Binding DiscordConfigured}" />
-          </StackPanel>
-          <TextBlock Text="{Binding DiscordSummary}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
-          <TextBlock Text="Alerts contain account names and what happened, and go only to Discord. The webhook is stored encrypted on this PC. If the PC itself shuts down, no alert can be sent." Foreground="{StaticResource SubtleBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0" />
+        </StackPanel>
+      </Border>
+    </Popup>
+
+    <!-- Settings -->
+    <Popup x:Name="SettingsPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+      <Border Style="{StaticResource PopupSurface}" Width="460">
+        <StackPanel>
+          <TextBlock Text="Settings" Style="{StaticResource PopupTitle}" />
+          <Border Background="{StaticResource InputBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="2" Margin="0,10,0,12" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal">
+            <RadioButton x:Name="SettingsTabAccounts" GroupName="SettingsTab" Content="Accounts" IsChecked="True" Style="{StaticResource PreviewModeButton}" />
+            <RadioButton x:Name="SettingsTabAlerts" GroupName="SettingsTab" Content="Alerts" Style="{StaticResource PreviewModeButton}" />
+            <RadioButton x:Name="SettingsTabLayout" GroupName="SettingsTab" Content="Layout" Style="{StaticResource PreviewModeButton}" />
+            <RadioButton x:Name="SettingsTabPlans" GroupName="SettingsTab" Content="Plans" Style="{StaticResource PreviewModeButton}" />
+            <RadioButton x:Name="SettingsTabPhone" GroupName="SettingsTab" Content="Phone" Style="{StaticResource PreviewModeButton}" />
+            </StackPanel>
+          </Border>
+          <ScrollViewer MaxHeight="460" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid>
+            <StackPanel x:Name="SettingsAccountsPanel" Visibility="{Binding IsChecked, ElementName=SettingsTabAccounts, Converter={StaticResource BoolVisibility}}">
+            <TextBlock Text="Saved logins" Style="{StaticResource PopupTitle}" />
+            <ItemsControl ItemsSource="{Binding SavedLogins}" Margin="0,8,0,0"><ItemsControl.ItemTemplate><DataTemplate>
+              <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <CheckBox IsChecked="{Binding Selected}" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Include in Open selected" AutomationProperties.Name="{Binding Name, StringFormat=Select {0}}" />
+                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="8,0" />
+                <Button Grid.Column="3" Content="Open" Command="{Binding DataContext.OpenLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource CompactButton}" MinHeight="26" Padding="10,2" Margin="0,0,4,0" AutomationProperties.Name="{Binding Name, StringFormat=Open {0}}" />
+                <Button Grid.Column="4" Content="Login" Click="LoginRow_Click" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" Margin="0,0,4,0" ToolTip="Open this account's own browser profile. If its session expired, log in once; otherwise this just refreshes the saved login." AutomationProperties.Name="{Binding Name, StringFormat=Log in again as {0}}" />
+                <Button Grid.Column="5" Content="Remove" Command="{Binding DataContext.RemoveLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" AutomationProperties.Name="{Binding Name, StringFormat=Remove saved login {0}}" />
+              </Grid>
+            </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+            <TextBlock Text="Game to open (roblox.com/games/… link or place id)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
+            <TextBox Text="{Binding GameLink, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Game link or place id" />
+            <CheckBox Content="Restart an account when Roblox ends its login" IsChecked="{Binding AutoRecover}" Margin="0,8,0,0" ToolTip="When a client's login is ended (it freezes, then gets kicked), the manager restarts just that account from its saved login. At most once per 20 minutes per account." />
+            <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="56" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <TextBlock Text="Seconds between accounts" Foreground="{StaticResource SubtleBrush}" FontSize="11" VerticalAlignment="Center" />
+              <TextBox Grid.Column="2" Text="{Binding LaunchSpacingSeconds, UpdateSourceTrigger=LostFocus}" ToolTip="5 to 120. Roblox slows launches down if too many start at once." AutomationProperties.Name="Seconds between accounts" />
+            </Grid>
+            <Button Content="{Binding OpenSelectedLabel}" Command="{Binding OpenSelectedCommand}" Style="{StaticResource CompactButton}" Margin="0,8,0,0" ToolTip="Starts only the accounts you ticked above." />
+            <Button Content="{Binding OpenClosedLabel}" Command="{Binding OpenClosedCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,6,0,0" ToolTip="Starts the game below for every saved account that isn't running." />
+            <Button Content="Log in to add an account…" Click="LoginNew_Click" Style="{StaticResource CompactButton}" Margin="0,8,0,0" ToolTip="Opens Roblox's login page. Log in once and the account is saved; no cookie copying." />
+            <TextBlock Text="A saved login gives full access to the account: don't use this on a shared PC. Or add one by pasting its .ROBLOSECURITY cookie. It is stored encrypted for this Windows user and only sent to roblox.com." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,6" />
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <PasswordBox x:Name="CookieBox" AutomationProperties.Name="Session cookie" />
+              <Button Grid.Column="1" Content="Add" Click="AddLogin_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
+            </Grid>
+            <Border Style="{StaticResource Divider}" Margin="0,12,0,10" />
+            <StackPanel Orientation="Horizontal">
+              <Button Content="Back up settings…" Click="Backup_Click" Style="{StaticResource CompactButton}" ToolTip="Saves names, order, ignored accounts and window positions to a file. Logins are not included." />
+              <Button Content="Restore…" Click="Restore_Click" Style="{StaticResource CompactButton}" Margin="6,0,0,0" ToolTip="Loads a settings backup made with Back up settings." />
+            </StackPanel>
+            </StackPanel>
+            <StackPanel x:Name="SettingsAlertsPanel" Visibility="{Binding IsChecked, ElementName=SettingsTabAlerts, Converter={StaticResource BoolVisibility}}">
+            <TextBlock Text="When do alerts go to Discord?" Style="{StaticResource PopupTitle}" FontSize="15" />
+            <ComboBox SelectedIndex="{Binding AwayModeIndex}" Margin="0,8,0,0" AutomationProperties.Name="Away mode">
+              <ComboBoxItem Content="Automatic: only when I'm away from the PC" />
+              <ComboBoxItem Content="Always (treat me as away)" />
+              <ComboBoxItem Content="Never (I'm at the PC)" />
+            </ComboBox>
+            <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="56" /></Grid.ColumnDefinitions>
+              <TextBlock Text="Count me as away after (minutes without keyboard or mouse)" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <TextBox Grid.Column="1" Text="{Binding AwayMinutes, UpdateSourceTrigger=LostFocus}" ToolTip="1 to 240" AutomationProperties.Name="Minutes until away" />
+            </Grid>
+            <TextBlock Text="{Binding AwayHint}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
+            <TextBlock Text="At the PC nothing is sent, so closing a client yourself never pings you. When you step away, one message lists accounts that were already down." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
+            <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
+            <TextBlock Text="Discord alerts" Style="{StaticResource PopupTitle}" FontSize="15" />
+            <TextBlock Text="Get a Discord message when an account disconnects, its game or window closes, it freezes, or it loses its login, even when you're away from the PC." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
+            <TextBlock Text="Webhook address (channel settings → Integrations → Webhooks)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,0,0,4" />
+            <PasswordBox x:Name="DiscordUrlBox" AutomationProperties.Name="Discord webhook address" />
+            <TextBlock Text="Your Discord user ID (optional: this is what makes your phone ping)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
+            <TextBox x:Name="DiscordUserBox" AutomationProperties.Name="Discord user ID" MaxLength="25" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+              <Button Content="Save" Click="SaveDiscord_Click" Style="{StaticResource CompactPrimaryButton}" />
+              <Button Content="Test" Command="{Binding TestDiscordCommand}" Style="{StaticResource CompactButton}" Margin="6,0,0,0" />
+              <Button Content="Turn off" Click="ClearDiscord_Click" Style="{StaticResource CompactButton}" Margin="6,0,0,0" IsEnabled="{Binding DiscordConfigured}" />
+            </StackPanel>
+            <TextBlock Text="{Binding DiscordSummary}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
+            <TextBlock Text="Alerts contain account names and what happened, and go only to Discord. The webhook is stored encrypted on this PC. If the PC itself shuts down, no alert can be sent." Foreground="{StaticResource SubtleBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0" />
+            </StackPanel>
+            <StackPanel x:Name="SettingsLayoutPanel" Visibility="{Binding IsChecked, ElementName=SettingsTabLayout, Converter={StaticResource BoolVisibility}}">
+            <TextBlock Text="Arrange windows" Style="{StaticResource PopupTitle}" />
+            <TextBlock Text="Grid monitor" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" />
+            <ComboBox ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" DisplayMemberPath="Label" AutomationProperties.Name="Grid monitor" />
+            <TextBlock Text="Layout" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" />
+            <ComboBox ItemsSource="{Binding Layouts}" SelectedItem="{Binding SelectedLayout}" DisplayMemberPath="Label" AutomationProperties.Name="Grid layout" />
+            <TextBlock Text="Main client (maximized on the primary monitor)" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,4" TextWrapping="Wrap" />
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <ComboBox ItemsSource="{Binding Clients}" SelectedItem="{Binding MainClient}" DisplayMemberPath="Label" AutomationProperties.Name="Main client" />
+              <Button Grid.Column="1" Content="None" Click="ClearMain_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
+            </Grid>
+            <TextBlock Text="{Binding MainSummary}" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,8,0,14" />
+            <Button Content="Arrange now" Command="{Binding ArrangeCommand}" Click="ArrangeNow_Click" Style="{StaticResource CompactPrimaryButton}" />
+            <Border Style="{StaticResource Divider}" Margin="0,14,0,12" />
+            <TextBlock Text="Remember positions" Foreground="{StaticResource MutedBrush}" />
+            <TextBlock Text="Put the windows where you want them, then save. Each account opens in its own spot from now on." TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,4,0,8" />
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Button Content="Save current positions" Command="{Binding SaveLayoutCommand}" Style="{StaticResource CompactButton}" />
+              <Button Grid.Column="1" Content="Clear" Command="{Binding ClearLayoutCommand}" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
+            </Grid>
+            <TextBlock Text="{Binding LayoutSummary2}" FontSize="11" Foreground="{StaticResource SubtleBrush}" Margin="0,6,0,0" />
+            </StackPanel>
+            <StackPanel x:Name="SettingsPlansPanel" Visibility="{Binding IsChecked, ElementName=SettingsTabPlans, Converter={StaticResource BoolVisibility}}">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <TextBlock Text="Performance" Style="{StaticResource PopupTitle}" />
+              <Border Grid.Column="1" Style="{StaticResource Chip}" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Center"><TextBlock Text="{Binding ResourcePlanSummary}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource AccentHoverBrush}" /></Border>
+            </Grid>
+            <TextBlock Text="Windows priority for every included client, including new arrivals. Ignored clients keep their original settings." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,14" />
+            <TextBlock Text="PLAN" Style="{StaticResource Overline}" />
+            <ComboBox ItemsSource="{Binding ResourcePlans}" SelectedItem="{Binding SelectedResourcePlan}" IsEnabled="{Binding IsIdle}" AutomationProperties.Name="Resource plan" />
+            <TextBlock Text="{Binding ResourcePlanDescription}" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="0,10,0,6" />
+            <TextBlock Text="Plans adjust Windows priorities. They do not set FPS or limit RAM." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Button Content="Apply to visible clients" Command="{Binding ApplyResourcePlanCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,0" />
+              <Button Grid.Column="1" Content="Reset all" Command="{Binding ResetResourcePlanCommand}" Style="{StaticResource CompactButton}" />
+            </Grid>
+            <Border Style="{StaticResource Divider}" />
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <TextBlock Text="Resident RAM limit" Style="{StaticResource SectionHeading}" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Text="{Binding MemoryCapSummary}" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" />
+            </Grid>
+            <Border Background="{StaticResource WarningSoftBrush}" CornerRadius="8" Padding="10,8" Margin="0,10,0,10">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                <TextBlock Text="&#xE7BA;" Style="{StaticResource Glyph}" FontSize="13" Foreground="{StaticResource WarningBrush}" VerticalAlignment="Top" Margin="0,1,9,0" />
+                <TextBlock Grid.Column="1" Text="Limits physical working-set RAM, not total allocated memory. 500 MiB can cause heavy paging, stutters or slow rejoins. Ignored clients stay exempt." Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap" FontSize="11" />
+              </Grid>
+            </Border>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="80" /><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <TextBox Text="{Binding MemoryCapInput, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsIdle}" MinHeight="32" Padding="8,4" FontFamily="{StaticResource MonoFont}" ToolTip="256–8192 MiB per included client" AutomationProperties.Name="Resident RAM limit in MiB" />
+              <TextBlock Grid.Column="1" Text="MiB" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="6,0,10,0" />
+              <Button Grid.Column="2" Content="Apply limit" Command="{Binding ApplyMemoryCapCommand}" Style="{StaticResource CompactButton}" Margin="0,0,8,0" />
+              <Button Grid.Column="3" Content="Off" Command="{Binding ResetMemoryCapCommand}" Style="{StaticResource CompactButton}" />
+            </Grid>
+            <TextBlock Text="Original settings come back when the manager closes normally." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,0" />
+            </StackPanel>
+            <StackPanel x:Name="SettingsPhonePanel" DataContext="{Binding Remote}" Visibility="{Binding IsChecked, ElementName=SettingsTabPhone, Converter={StaticResource BoolVisibility}}">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <TextBlock Text="Mobile monitoring" Style="{StaticResource PopupTitle}" />
+              <Border Grid.Column="1" CornerRadius="10" Padding="9,2" VerticalAlignment="Center">
+                <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{StaticResource IdleSoftBrush}" /><Style.Triggers><DataTrigger Binding="{Binding Running}" Value="True"><Setter Property="Background" Value="{StaticResource SuccessSoftBrush}" /></DataTrigger></Style.Triggers></Style></Border.Style>
+                <TextBlock FontSize="11" FontWeight="SemiBold"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Off" /><Setter Property="Foreground" Value="{StaticResource MutedBrush}" /><Style.Triggers><DataTrigger Binding="{Binding Running}" Value="True"><Setter Property="Text" Value="Live" /><Setter Property="Foreground" Value="{StaticResource SuccessBrush}" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+              </Border>
+            </Grid>
+            <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,14" />
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Button Content="Start monitoring" Command="{Binding StartCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,0" />
+              <Button Grid.Column="1" Content="Stop" Command="{Binding StopCommand}" Style="{StaticResource CompactButton}" />
+            </Grid>
+            <StackPanel Visibility="{Binding Running, Converter={StaticResource BoolVisibility}}" Margin="0,16,0,0">
+              <TextBlock Text="ACCESS CODE · CHANGES EACH START" Style="{StaticResource Overline}" />
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBox Text="{Binding AccessCode, Mode=OneWay}" Style="{StaticResource CodeBox}" Foreground="{StaticResource TextBrush}" FontSize="14" TextWrapping="Wrap" AutomationProperties.Name="Dashboard access code" />
+                <Button Grid.Column="1" Click="CopyMobileCode_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" ToolTip="Copy access code" AutomationProperties.Name="Copy access code">
+                  <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8C8;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" /><TextBlock Text="Copy" VerticalAlignment="Center" /></StackPanel>
+                </Button>
+              </Grid>
+              <TextBlock Text="LOCAL TEST ADDRESS" Style="{StaticResource Overline}" Margin="0,12,0,6" />
+              <TextBox Text="{Binding LocalAddress, Mode=OneWay}" Style="{StaticResource CodeBox}" AutomationProperties.Name="Local monitoring address" />
+            </StackPanel>
+            <Border Style="{StaticResource Divider}" />
+            <TextBlock Text="AWAY FROM HOME" Style="{StaticResource Overline}" Margin="0,0,0,10" />
+            <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
+              <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top"><TextBlock Text="1" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentHoverBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+              <TextBlock Grid.Column="1" Text="Install Tailscale on this PC and on your phone, signed in to the same account." TextWrapping="Wrap" Margin="0,2,0,0" />
+            </Grid>
+            <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
+              <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top"><TextBlock Text="2" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentHoverBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="Run this on the PC:" Margin="0,2,0,6" />
+                <TextBox Text="tailscale serve --bg http://127.0.0.1:8765" Style="{StaticResource CodeBox}" TextWrapping="Wrap" AutomationProperties.Name="Tailscale Serve command" />
+              </StackPanel>
+            </Grid>
+            <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
+              <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top"><TextBlock Text="3" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentHoverBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+              <TextBlock Grid.Column="1" TextWrapping="Wrap" Margin="0,2,0,0"><Run Text="Open the HTTPS address Tailscale prints and enter the access code. Use private Serve, never public Funnel." /><Run Text=" Details: docs/REMOTE.md." Foreground="{StaticResource MutedBrush}" /></TextBlock>
+            </Grid>
+            <TextBlock Text="Read-only. Ignored clients stay hidden. Previews refresh about every 8 seconds while viewed and never move or restore a game. A locked desktop or minimized window can block previews." Foreground="{StaticResource SubtleBrush}" TextWrapping="Wrap" FontSize="11" />
+            </StackPanel>
+            </Grid>
+          </ScrollViewer>
         </StackPanel>
       </Border>
     </Popup>
