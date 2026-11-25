@@ -128,18 +128,86 @@ public sealed partial class MainViewModel
             RaiseDiscord();
         }, () => webhook.Configured, HandleError);
         wasAway = IsAway;
+        WatchForCrashes();
         if (webhook.Configured) Announce(new(DateTimeOffset.UtcNow, "Manager", "Started. Watching your accounts; alerts will appear here.", false), false, info: true);
     }
 
     // bad: a problem (posted, pings while away). Not bad: the account is fine again, which edits the message that reported
     // the problem instead of posting another. info: a plain message such as "manager started", sent only while away.
-    public void Announce(ActivityEntry entry, bool bad, bool info = false)
+    public void Announce(ActivityEntry entry, bool bad, bool info = false, bool quiet = false)
     {
         if (!webhook.Configured) return;
         if (bad) openProblems[entry.Label] = entry; else if (!info) openProblems.Remove(entry.Label);
         UpdateAway();
         if (!bad && !info) { webhook.Enqueue(entry, DiscordWebhook.AlertKind.Recovery); return; }
-        if (IsAway) webhook.Enqueue(entry, bad ? DiscordWebhook.AlertKind.Problem : DiscordWebhook.AlertKind.Info);
+        if (IsAway) webhook.Enqueue(entry, bad ? (quiet ? DiscordWebhook.AlertKind.Notice : DiscordWebhook.AlertKind.Problem) : DiscordWebhook.AlertKind.Info);
+    }
+
+    // A disconnect or closed window the manager repairs by itself (Auto-reopen on and a saved login) is posted without a
+    // ping: the person only needs to know if the repair fails, which is its own pinging alert.
+    private bool RepairedAutomatically(ActivityEntry entry)
+    {
+        if (!autoReopen || !entry.Warning) return false;
+        if (!entry.Message.StartsWith("Roblox's log reports a disconnect", StringComparison.Ordinal) && !entry.Message.StartsWith("Window closed", StringComparison.Ordinal)) return false;
+        var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
+        long? id = Clients.FirstOrDefault(c => c.Label == entry.Label)?.AccountId ?? accountLabels.FirstOrDefault(p => p.Value == entry.Label).Key;
+        return id is { } known && known != 0 && saved.Contains(known);
+    }
+
+    // Anything still reported as down after this long was not fixed by the automatic repair, so it now pings.
+    private static readonly TimeSpan EscalateAfter = TimeSpan.FromMinutes(15);
+    private readonly HashSet<string> escalated = [];
+    private void EscalateStuck()
+    {
+        if (!webhook.Configured || !IsAway) return;
+        escalated.RemoveWhere(l => !openProblems.ContainsKey(l));
+        var now = DateTimeOffset.UtcNow;
+        foreach (var (label, entry) in openProblems.Where(p => now - p.Value.At >= EscalateAfter && !escalated.Contains(p.Key)).ToArray())
+        {
+            escalated.Add(label);
+            var again = new ActivityEntry(now, label, $"Still not fixed {(int)EscalateAfter.TotalMinutes} minutes after: {entry.Message}", true);
+            Journal(again);
+            Announce(again, true);
+        }
+    }
+
+    // A crash of the manager itself is the one thing it cannot report from a normal alert, so it is sent on the way down,
+    // and a marker file lets the next start report a crash it could not (power loss, forced close).
+    private string RunningMarker => System.IO.Path.Combine(settingsFolder, "running.marker");
+    private void WatchForCrashes()
+    {
+        try
+        {
+            if (System.IO.File.Exists(RunningMarker))
+            {
+                var text = System.IO.File.ReadAllText(RunningMarker).Trim();
+                if (text != "reported")
+                {
+                    string since = System.IO.File.GetLastWriteTime(RunningMarker).ToString("g");
+                    var entry = new ActivityEntry(DateTimeOffset.UtcNow, "Manager", $"The manager was not closed properly last time (crash, power loss or forced close, last running around {since}). Accounts may have been unattended until now.", true);
+                    Journal(entry); webhook.Enqueue(entry, DiscordWebhook.AlertKind.Problem);
+                }
+            }
+            System.IO.Directory.CreateDirectory(settingsFolder); System.IO.File.WriteAllText(RunningMarker, "running");
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { }
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandled;
+    }
+    private void OnUnhandled(object? sender, UnhandledExceptionEventArgs e)
+    {
+        try
+        {
+            var entry = new ActivityEntry(DateTimeOffset.UtcNow, "Manager", "The manager crashed and stopped: " + (e.ExceptionObject as Exception)?.GetType().Name + ". Nothing is watching or restarting your accounts until it is started again.", true);
+            Journal(entry);
+            if (webhook.Configured) { webhook.Enqueue(entry, DiscordWebhook.AlertKind.Problem); Task.Run(() => webhook.FlushAsync()).Wait(TimeSpan.FromSeconds(5)); }
+            System.IO.File.WriteAllText(RunningMarker, "reported");
+        }
+        catch (Exception) { }
+    }
+    private void StopWatchingForCrashes()
+    {
+        AppDomain.CurrentDomain.UnhandledException -= OnUnhandled;
+        try { System.IO.File.Delete(RunningMarker); } catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { }
     }
 
     // A closed window has no "back" event of its own: the account is back when a client with the same name shows up again.

@@ -207,6 +207,31 @@ internal static class Program
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });
+        Test("Discord: a problem being fixed automatically is posted without a ping; a real problem in the same batch still pings", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-hook-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var fake = new FakeDiscord();
+                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(150));
+                hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", "111222333444555666");
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Roblox's log reports a disconnect.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Notice);
+                for (int i = 0; i < 40 && fake.Requests.Count == 0; i++) Thread.Sleep(50);
+                Check(fake.Requests.Count == 1);
+                using (var quiet = System.Text.Json.JsonDocument.Parse(fake.Requests[0].Body))
+                {
+                    Check(quiet.RootElement.GetProperty("content").ValueKind == System.Text.Json.JsonValueKind.Null);
+                    Check(quiet.RootElement.GetProperty("allowed_mentions").GetProperty("users").GetArrayLength() == 0);
+                }
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Disconnected again.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Notice);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt2", "Could not be reopened automatically: login expired.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                for (int i = 0; i < 40 && fake.Requests.Count < 2; i++) Thread.Sleep(50);
+                Check(fake.Requests.Count == 2);
+                using var loud = System.Text.Json.JsonDocument.Parse(fake.Requests[1].Body);
+                Check(loud.RootElement.GetProperty("content").GetString() == "<@111222333444555666>");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
         Test("Discord alerts arrive as one batched message, ping only for problems, and cannot mention anyone else", () =>
         {
             string root = Path.Combine(Path.GetTempPath(), "rafk-hook-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);

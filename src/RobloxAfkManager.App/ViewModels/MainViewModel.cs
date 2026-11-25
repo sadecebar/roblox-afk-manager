@@ -434,7 +434,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (disposed) return;
-        AnnounceClosing();
+        AnnounceClosing(); StopWatchingForCrashes();
         try { TrackRoster(forceSave: true); } catch (Exception ex) { log.Write("Account roster could not be saved on close.", ex); }
         disposed = true; monitor?.Dispose(); (launcher as IDisposable)?.Dispose(); webhook.Dispose();
         nameCancellation.Cancel();

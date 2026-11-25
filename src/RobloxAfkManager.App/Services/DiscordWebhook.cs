@@ -103,10 +103,12 @@ public sealed partial class DiscordWebhook : IDisposable
 
     // What an alert is about. Problems are posted (and ping). Recoveries edit the message that reported the problem
     // instead of posting again. Info is a plain message, such as "manager started".
-    public enum AlertKind { Problem, Recovery, Info }
+    // Notice is a problem the manager is already fixing: posted in red and turned green when fixed, but it never pings.
+    public enum AlertKind { Problem, Notice, Recovery, Info }
     private enum LineState { Down, Back, Info }
-    private sealed class Line(string label, string message, DateTimeOffset at, LineState state)
+    private sealed class Line(string label, string message, DateTimeOffset at, LineState state, bool quiet = false)
     {
+        public readonly bool Quiet = quiet;
         public readonly string Label = label, Message = message;
         public readonly DateTimeOffset At = at;
         public DateTimeOffset BackAt;
@@ -148,7 +150,8 @@ public sealed partial class DiscordWebhook : IDisposable
             switch (kind)
             {
                 case AlertKind.Problem:
-                    var line = new Line(entry.Label, entry.Message, entry.At, LineState.Down); fresh.Add(line); freshByLabel[entry.Label] = line; break;
+                case AlertKind.Notice:
+                    var line = new Line(entry.Label, entry.Message, entry.At, LineState.Down, kind == AlertKind.Notice); fresh.Add(line); freshByLabel[entry.Label] = line; break;
                 case AlertKind.Recovery:
                     if (freshByLabel.TryGetValue(entry.Label, out var pending) && pending.State == LineState.Down) { pending.State = LineState.Back; pending.BackAt = entry.At; }
                     else if (open.TryGetValue(entry.Label, out var posted) && posted.Line.State == LineState.Down) { posted.Line.State = LineState.Back; posted.Line.BackAt = entry.At; edited.Add(posted.Message); open.Remove(entry.Label); }
@@ -160,7 +163,7 @@ public sealed partial class DiscordWebhook : IDisposable
 
         if (fresh.Count > 0 && TakeMessageSlot(now))
         {
-            string? content = UserId is not null && fresh.Any(l => l.State == LineState.Down) ? $"<@{UserId}>" : null;
+            string? content = UserId is not null && fresh.Any(l => l.State == LineState.Down && !l.Quiet) ? $"<@{UserId}>" : null;
             var (ok, body) = await SendAsync(HttpMethod.Post, url + "?wait=true", BuildPayload(fresh, content, UserId is not null && content is not null)).ConfigureAwait(false);
             if (ok && MessageId(body) is { } id)
             {
@@ -214,18 +217,21 @@ public sealed partial class DiscordWebhook : IDisposable
         int down = all.Count(l => l.State == LineState.Down);
         var lines = all.Take(MaxLinesPerMessage).Select(l => l.State switch
         {
+            LineState.Down when l.Quiet => $"🟠 **{Clip(l.Label, 60)}**: {Clip(l.Message, 200)} · <t:{l.At.ToUnixTimeSeconds()}:R>",
             LineState.Down => $"🔴 **{Clip(l.Label, 60)}**: {Clip(l.Message, 200)} · <t:{l.At.ToUnixTimeSeconds()}:R>",
             LineState.Back => $"🟢 **{Clip(l.Label, 60)}**: back at <t:{l.BackAt.ToUnixTimeSeconds()}:T> · <t:{l.BackAt.ToUnixTimeSeconds()}:R> (was: {Clip(l.Message, 80)})",
             _ => $"🟢 **{Clip(l.Label, 60)}**: {Clip(l.Message, 200)} · <t:{l.At.ToUnixTimeSeconds()}:R>",
         }).ToList();
         if (all.Count > MaxLinesPerMessage) lines.Add($"…and {all.Count - MaxLinesPerMessage} more.");
-        string title = down > 0 ? (down == 1 ? "An account needs attention" : $"{down} accounts need attention")
+        bool allQuiet = down > 0 && all.Where(l => l.State == LineState.Down).All(l => l.Quiet);
+        string title = allQuiet ? (down == 1 ? "An account had a problem, fixing it" : $"{down} accounts had a problem, fixing them")
+            : down > 0 ? (down == 1 ? "An account needs attention" : $"{down} accounts need attention")
             : all.Any(l => l.State == LineState.Back) ? (all.Count == 1 ? "Account is back" : "All accounts are back") : "Account update";
         var payload = new Dictionary<string, object?>
         {
             ["content"] = content,
             ["allowed_mentions"] = new Dictionary<string, object?> { ["parse"] = Array.Empty<string>(), ["users"] = ping && UserId is not null ? new[] { UserId } : Array.Empty<string>() },
-            ["embeds"] = new[] { new Dictionary<string, object?> { ["title"] = title, ["description"] = string.Join("\n", lines), ["color"] = down > 0 ? 0xE5534B : 0x3FB950 } },
+            ["embeds"] = new[] { new Dictionary<string, object?> { ["title"] = title, ["description"] = string.Join("\n", lines), ["color"] = allQuiet ? 0xD29922 : down > 0 ? 0xE5534B : 0x3FB950 } },
         };
         if (!edit) payload["username"] = "Roblox AFK Manager";
         return JsonSerializer.Serialize(payload);
