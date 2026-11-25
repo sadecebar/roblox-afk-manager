@@ -23,7 +23,6 @@ public sealed class ClientTileViewModel(ClientWindow client, int slot) : Observa
     public string GameName => account?.GameName ?? (Session?.PlaceId is { } place ? $"Place {place}" : "Game not identified");
     public string SessionStatus => Status == "Not responding" ? "Not responding" : Session is null || clock - Session.CheckedAt > TimeSpan.FromMinutes(3) ? "Session unknown" : Session.Phase switch
     {
-        SessionPhase.Joined when IsQuiet => "Quiet, may be stuck",
         SessionPhase.Joined => "Joined (log)",
         SessionPhase.Disconnected => "Disconnected (log)",
         SessionPhase.Joining when clock - Session.EventAt > TimeSpan.FromMinutes(2) => "Possibly stuck joining",
@@ -54,7 +53,7 @@ public sealed class ClientTileViewModel(ClientWindow client, int slot) : Observa
         Status is "Minimized externally" or "Other desktop / cloaked" ? "Warn" :
         SessionStatus == "Joined (log)" ? "Good" : SessionStatus == "Joining (log)" ? "Pending" : "Idle";
     public bool IsQuiet => SessionLogParser.IsQuiet(Session, clock);
-    public bool SessionNeedsAttention => SessionStatus is "Disconnected (log)" or "Possibly stuck joining" or "Quiet, may be stuck";
+    public bool SessionNeedsAttention => SessionStatus is "Disconnected (log)" or "Possibly stuck joining";
     public void SetAccountDetails(AccountDetails details)
     {
         account = details;

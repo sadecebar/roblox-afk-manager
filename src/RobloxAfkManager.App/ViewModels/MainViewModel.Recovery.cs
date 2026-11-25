@@ -16,7 +16,8 @@ public sealed partial class MainViewModel
     // Only accounts with a saved login can be restarted, and each at most once per cooldown.
     public bool AutoRecover { get => autoRecover; set => Set(ref autoRecover, value); }
     // A joined client that logs almost nothing for ten minutes (see SessionLogParser.IsQuiet) is closed and reopened.
-    private bool autoRestartQuiet = true;
+    // Off by default: log volume varies a lot between games and servers (healthy AFK clients were seen at 48 to 500 lines per ten minutes).
+    private bool autoRestartQuiet = false;
     public bool AutoRestartQuiet { get => autoRestartQuiet; set => Set(ref autoRestartQuiet, value); }
 
     // The per-client Restart button: always allowed, no cooldown or hourly cap, because the person asked for it.
