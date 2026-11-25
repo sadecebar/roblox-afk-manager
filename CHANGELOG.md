@@ -9,6 +9,9 @@
 - **Experimental, off by default: restart a client whose log goes quiet** (under 100 activity lines in 10 minutes). Healthy AFK clients can be that quiet in some games, so it may restart accounts that are fine. Error boxes such as "Teleport Failed" are not in the log, so use the Restart button for those.
 - **Restart button on every card.** Closes that client and reopens it from its saved login, no cooldown.
 
+### Header status chips
+- **See what is on or off at a glance.** The header now has **Login fix**, **Quiet fix** and **Phone** chips next to Alerts and Rejoin, each with an on/off dot. Login fix and Quiet fix can be clicked to toggle.
+
 ### Incident log
 - **`incidents.log` records what happened overnight.** One line per event: time, account, what went wrong (including Roblox's own disconnect reason, such as "authentication failure") and what the manager did about it (closed and reopened from the saved login, or that the fix failed). It is written even when you're at the PC and rotates at 1 MB. It sits in the manager's settings folder.
 
