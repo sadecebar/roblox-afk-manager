@@ -20,7 +20,7 @@ public sealed partial class MainViewModel
     public enum AwayModes { Auto, Away, AtPc }
     private IUserIdle idle = null!;
     private AwayModes awayMode = AwayModes.Auto;
-    private int awayMinutes = 5;
+    private int awayMinutes = 2;
     private bool wasAway;
     private readonly Dictionary<string, ActivityEntry> openProblems = [];
     private string AwayFile => System.IO.Path.Combine(settingsFolder, "away.txt");
@@ -103,7 +103,7 @@ public sealed partial class MainViewModel
             if (Clients.Any(c => !c.IsIgnored && c.Label == label && (c.Session is null || c.Session.Phase == SessionPhase.Joined)))
                 Announce(new(DateTimeOffset.UtcNow, label, "Back online.", false), false);
     }
-    private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
+    private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); Raise(nameof(ShowAwayChip)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
 
     public void SaveDiscord(string? url, string? userId)
     {

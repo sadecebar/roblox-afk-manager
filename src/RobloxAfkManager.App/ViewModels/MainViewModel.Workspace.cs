@@ -150,6 +150,7 @@ public sealed partial class MainViewModel
             Announce(entry, entry.Warning);
         }
         AnnounceReturns();
+        TrackReopen();
         if (events.Count > 0) { RaiseUnread(); Raise(nameof(HasActivity)); SaveWorkspace(); }
     }
     public void MarkActivityRead() { unreadAlerts = 0; RaiseUnread(); }

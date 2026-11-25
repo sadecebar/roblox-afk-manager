@@ -358,8 +358,43 @@ internal static class Program
                     Thread.Sleep(400); Check(fake.Requests.Count == 2);
                     vm.CycleAway(); Check(vm.AwayModeIndex == 0 && vm.IsAway); // back to automatic, still idle
                 }
-                using (var again = Make()) Check(again.AwayModeIndex == 0 && again.AwayMinutes == 5); // remembered
+                using (var again = Make()) Check(again.AwayModeIndex == 0 && again.AwayMinutes == 2); // remembered
                 hook.Dispose();
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Away: a crashed account is reopened from its saved login; at the PC nothing is reopened", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-reopen-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                // Runs one crash with the person idle for the given time; returns the launches and the view model's activity.
+                (List<(string Cookie, long Place)> Launched, string[] Activity) Crash(TimeSpan idleFor, bool enabled)
+                {
+                    string folder = Path.Combine(root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
+                    var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks); var idle = new FakeIdle { Idle = idleFor }; var launcher = new RecordingLauncher();
+                    using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(folder, new FakeDiscord());
+                    using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new FixedAccountLookup(77), workspaceStore: new MemoryWorkspaceStore(),
+                        accountLauncher: launcher, loginVault: vault, settingsFolder: folder, discordWebhook: hook, userIdle: idle) { ReopenAfter = TimeSpan.FromMilliseconds(200) };
+                    vm.GameLink = "1818";
+                    Check(!vm.AutoReopen); vm.AutoReopen = enabled; // off until switched on
+                    void Refresh() { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(80); }
+                    for (int i = 0; i < 40 && vm.Clients.FirstOrDefault()?.AccountId != 77; i++) Refresh();
+                    Check(vm.Clients[0].AccountId == 77, "account was not identified");
+                    for (int i = 0; i < 4; i++) Refresh(); // let the identification settle
+                    fake.Closed.Add(fake.Placements.Keys.First());
+                    for (int i = 0; i < 40 && launcher.Launched.Count == 0; i++) Refresh();
+                    for (int i = 0; i < 4; i++) Refresh();
+                    return ([.. launcher.Launched], vm.Activity.Select(a => a.Message).ToArray());
+                }
+                var atPc = Crash(TimeSpan.Zero, true);
+                Check(atPc.Launched.Count == 0, "reopened a client that was closed while the person was at the PC");
+                var off = Crash(TimeSpan.FromMinutes(10), false);
+                Check(off.Launched.Count == 0, "reopened although the option is off");
+                var away = Crash(TimeSpan.FromMinutes(10), true);
+                Check(away.Launched.Count == 1 && away.Launched[0].Place == 1818 && away.Launched[0].Cookie[0] == (char)114, "crashed client was not reopened");
+                Check(away.Activity.Any(m => m.Contains("reopened")));
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });

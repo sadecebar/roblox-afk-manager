@@ -16,18 +16,18 @@ public sealed partial class MainViewModel
     // Only accounts with a saved login can be restarted, and each at most once per cooldown.
     public bool AutoRecover { get => autoRecover; set => Set(ref autoRecover, value); }
 
-    private void AddActivity(string label, string message, bool warning)
+    private void AddActivity(string label, string message, bool warning, bool announce = true)
     {
         var entry = new ActivityEntry(DateTimeOffset.UtcNow, label, message, warning);
         Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);
         if (warning) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
-        Announce(entry, warning);
+        if (announce) Announce(entry, warning);
         RaiseUnread(); Raise(nameof(HasActivity)); SaveWorkspace();
     }
 
     private async Task RecoverSignedOutAsync()
     {
-        if (!AutoRecover || gamePlaceId == 0 || recovering || launching || Busy || disposed) return;
+        if (!AutoRecover || gamePlaceId == 0 || reopening || recovering || launching || Busy || disposed) return;
         var now = DateTimeOffset.UtcNow;
         var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
         var victim = Clients.FirstOrDefault(c => !c.IsIgnored && c.AccountId is { } id && saved.Contains(id)

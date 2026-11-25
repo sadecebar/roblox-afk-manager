@@ -68,7 +68,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Remote = new(windows.IsCurrent, log);
         resources = new(resourceSystem ?? new Win32ProcessResources(), log);
         memoryCaps = new(workingSetSystem ?? new Win32ProcessResources(), log);
-        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster(); InitializeLaunch(accountLauncher, loginVault, settingsFolder); InitializeDiscord(discordWebhook, userIdle); InitializePlacements();
+        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster(); InitializeLaunch(accountLauncher, loginVault, settingsFolder); InitializeDiscord(discordWebhook, userIdle); InitializeReopen(); InitializePlacements();
         selectedLayout = Layouts[1];
         DetectCommand = new(() => RefreshAsync(true), () => !Busy, HandleError);
         ArrangeCommand = new(ArrangeAsync, () => !Busy && IncludedCount > 0 && SelectedMonitor is not null, HandleError);
@@ -187,6 +187,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // These start with "do nothing while busy", so they must run after the refresh has released Busy.
         _ = ApplySavedPlacementsAsync();
         _ = RecoverSignedOutAsync();
+        _ = ReopenAwayAsync();
     }
 
     private async Task ReadStateAsync()

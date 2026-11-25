@@ -38,7 +38,7 @@
           <Border Style="{StaticResource Chip}" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="Combined working set of all detected clients, including ignored clients">
             <TextBlock VerticalAlignment="Center"><Run Text="{Binding TotalMemory, Mode=OneWay}" FontWeight="SemiBold" /><Run Text=" RAM" Foreground="{StaticResource MutedBrush}" /></TextBlock>
           </Border>
-          <Button x:Name="AwayChip" Click="AwayChip_Click" Style="{StaticResource ToolbarButton}" MinHeight="24" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="{Binding AwayHint}" AutomationProperties.Name="{Binding AwayLabel, StringFormat=Discord alerts mode: {0}}" Visibility="{Binding DiscordConfigured, Converter={StaticResource BoolVisibility}}">
+          <Button x:Name="AwayChip" Click="AwayChip_Click" Style="{StaticResource ToolbarButton}" MinHeight="24" Height="24" Padding="10,0" Margin="6,0,0,0" ToolTip="{Binding AwayHint}" AutomationProperties.Name="{Binding AwayLabel, StringFormat=Discord alerts mode: {0}}" Visibility="{Binding ShowAwayChip, Converter={StaticResource BoolVisibility}}">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
               <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{StaticResource SubtleBrush}" /><Style.Triggers><DataTrigger Binding="{Binding IsAway}" Value="True"><Setter Property="Fill" Value="{StaticResource AccentBrush}" /></DataTrigger></Style.Triggers></Style></Ellipse.Style></Ellipse>
               <TextBlock Text="{Binding AwayLabel}" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -261,7 +261,8 @@
             </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
             <TextBlock Text="Game to open (roblox.com/games/… link or place id)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
             <TextBox Text="{Binding GameLink, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Game link or place id" />
-            <CheckBox Content="Restart an account when Roblox ends its login" IsChecked="{Binding AutoRecover}" Margin="0,8,0,0" ToolTip="When a client's login is ended (it freezes, then gets kicked), the manager restarts just that account from its saved login. At most once per 20 minutes per account." />
+            <CheckBox Content="When I'm away, reopen accounts that crash or get kicked" IsChecked="{Binding AutoReopen}" Margin="0,8,0,0" ToolTip="While you are away from the PC (see the Alerts tab), an account whose window closes, or that is kicked and left on the error screen, is started again from its saved login. Needs a saved login and a game. At most 3 times an hour per account and 24 an hour in total." />
+          <CheckBox Content="Restart an account when Roblox ends its login" IsChecked="{Binding AutoRecover}" Margin="0,8,0,0" ToolTip="When a client's login is ended (it freezes, then gets kicked), the manager restarts just that account from its saved login. At most once per 20 minutes per account." />
             <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="56" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
               <TextBlock Text="Seconds between accounts" Foreground="{StaticResource SubtleBrush}" FontSize="11" VerticalAlignment="Center" />
               <TextBox Grid.Column="2" Text="{Binding LaunchSpacingSeconds, UpdateSourceTrigger=LostFocus}" ToolTip="5 to 120. Roblox slows launches down if too many start at once." AutomationProperties.Name="Seconds between accounts" />
@@ -281,9 +282,9 @@
             </StackPanel>
             </StackPanel>
             <StackPanel x:Name="SettingsAlertsPanel" Visibility="{Binding IsChecked, ElementName=SettingsTabAlerts, Converter={StaticResource BoolVisibility}}">
-            <TextBlock Text="When do alerts go to Discord?" Style="{StaticResource PopupTitle}" FontSize="15" />
+            <TextBlock Text="When am I away?" Style="{StaticResource PopupTitle}" FontSize="15" />
             <ComboBox SelectedIndex="{Binding AwayModeIndex}" Margin="0,8,0,0" AutomationProperties.Name="Away mode">
-              <ComboBoxItem Content="Automatic: only when I'm away from the PC" />
+              <ComboBoxItem Content="Automatic: away when I haven't touched the PC for a while" />
               <ComboBoxItem Content="Always (treat me as away)" />
               <ComboBoxItem Content="Never (I'm at the PC)" />
             </ComboBox>
@@ -292,7 +293,7 @@
               <TextBox Grid.Column="1" Text="{Binding AwayMinutes, UpdateSourceTrigger=LostFocus}" ToolTip="1 to 240" AutomationProperties.Name="Minutes until away" />
             </Grid>
             <TextBlock Text="{Binding AwayHint}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
-            <TextBlock Text="At the PC nothing is sent, so closing a client yourself never pings you. When you step away, one message lists accounts that were already down." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
+            <TextBlock Text="Discord alerts and automatic reopening only happen while you are away. At the PC nothing is sent or reopened, so closing a client yourself is always respected. When you step away, one message lists accounts that were already down." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
             <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
             <TextBlock Text="Discord alerts" Style="{StaticResource PopupTitle}" FontSize="15" />
             <TextBlock Text="Get a Discord message when an account disconnects, its game or window closes, it freezes, or it loses its login, even when you're away from the PC." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
