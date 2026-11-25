@@ -3,6 +3,8 @@
 ## v0.11.0: Open selected, spacing, backups
 
 ### New
+- **Smoother, clearer look.** Buttons squish slightly when pressed and glow on hover, switches slide, panels and settings tabs fade and slide in (all skipped when Windows animations are turned off). Buttons and tabs now carry matching icons.
+- **Status indicators in the header.** **Alerts** and **Rejoin** chips show **on**, **standby** or **off** with a colored dot (green and gently pulsing = active now, amber = switched on but waiting for you to be away, grey = off). Click Rejoin to switch it on or off, click Alerts to open the alert settings.
 - **Settings page.** One **Settings** button with five tabs (Accounts, Alerts, Layout, Plans, Phone). The Arrange, Plans and Mobile header buttons moved into it; Activity, Offline and Ignored stay in the header because they show live badges.
 - **Discord alerts.** Optional webhook that messages a channel when an account disconnects or is kicked, its game or window closes, it freezes, or it loses its login. Batched, pings only you, stored encrypted. See the README.
 - **Live status board.** Optional: one Discord message lists every account and its state and is edited in place when something changes (at most every 10 seconds), instead of new messages. Marked "manager closed" when the manager stops.

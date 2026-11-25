@@ -31,7 +31,7 @@ public sealed partial class MainViewModel
             try { System.IO.Directory.CreateDirectory(settingsFolder); System.IO.File.WriteAllText(ReopenFile, value ? "1" : "0"); }
             catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { Warning = true; Message = "Could not save the setting: " + ex.Message; }
             if (!value) pendingReopen.Clear();
-            Raise(nameof(ShowAwayChip));
+            Raise(nameof(ShowAwayChip)); RaiseIndicators();
         }
     }
     // The Away indicator matters whenever something depends on it.

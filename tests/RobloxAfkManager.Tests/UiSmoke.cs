@@ -164,7 +164,7 @@ internal static class UiSmoke
             Program.Check(popup.IsOpen && NativeSmoke.Descendants(popup.Child).OfType<TextBlock>().Any(t => t.Text == "Fixture account"), "Activity popup did not show stored history");
             var notifications = NativeSmoke.Descendants(popup.Child).OfType<CheckBox>().Single();
             notifications.IsChecked = false; Pump(); Program.Check(!store.Read().Notifications, "Notification preference did not save");
-            NativeSmoke.Descendants(popup.Child).OfType<Button>().Single(b => Equals(b.Content, "Clear")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
+            NativeSmoke.Descendants(popup.Child).OfType<Button>().Single(b => NativeSmoke.Label(b) == "Clear").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
             Program.Check(!vm.HasActivity && store.Read().History.Count == 0, "Clear did not remove stored history");
             popup.IsOpen = false;
         }
@@ -182,16 +182,17 @@ internal static class UiSmoke
             Program.Check(popup.IsOpen, "Settings did not open");
             var tabs = new (string Tab, string Panel, Func<FrameworkElement, bool> Has)[]
             {
-                ("SettingsTabAccounts", "SettingsAccountsPanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Log in to add an account…")) && NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Back up settings…"))),
-                ("SettingsTabAlerts", "SettingsAlertsPanel", p => NativeSmoke.Descendants(p).OfType<ComboBox>().Any() && NativeSmoke.Descendants(p).OfType<PasswordBox>().Any() && NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Test"))),
-                ("SettingsTabLayout", "SettingsLayoutPanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Arrange now"))),
+                ("SettingsTabAccounts", "SettingsAccountsPanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => NativeSmoke.Label(b) == "Log in to add an account…") && NativeSmoke.Descendants(p).OfType<Button>().Any(b => NativeSmoke.Label(b) == "Back up settings…")),
+                ("SettingsTabAlerts", "SettingsAlertsPanel", p => NativeSmoke.Descendants(p).OfType<ComboBox>().Any() && NativeSmoke.Descendants(p).OfType<PasswordBox>().Any() && NativeSmoke.Descendants(p).OfType<Button>().Any(b => NativeSmoke.Label(b) == "Test")),
+                ("SettingsTabLayout", "SettingsLayoutPanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => NativeSmoke.Label(b) == "Arrange now")),
                 ("SettingsTabPlans", "SettingsPlansPanel", p => NativeSmoke.Descendants(p).OfType<ComboBox>().Any()),
-                ("SettingsTabPhone", "SettingsPhonePanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => Equals(b.Content, "Start monitoring"))),
+                ("SettingsTabPhone", "SettingsPhonePanel", p => NativeSmoke.Descendants(p).OfType<Button>().Any(b => NativeSmoke.Label(b) == "Start monitoring")),
             };
             Directory.CreateDirectory("artifacts");
             foreach (var (tab, panelName, has) in tabs)
             {
                 ((RadioButton)host.FindName(tab)).IsChecked = true; Pump();
+                for (var settle = DateTime.UtcNow.AddMilliseconds(450); DateTime.UtcNow < settle;) Pump(); // let the tab finish fading in
                 foreach (var other in tabs)
                 {
                     var panel = (FrameworkElement)host.FindName(other.Panel);

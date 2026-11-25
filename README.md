@@ -131,6 +131,7 @@ Start with two clients to get a feel for it before scaling up.
 | **Offline** | Accounts that ran recently but are closed now. Copy a name, or **Forget** one you closed on purpose. |
 | **Activity** | Recent events, desktop notification toggle, Clear. |
 | **Settings** | Five tabs. **Accounts**: saved logins, the game to open, Open closed / Open selected, backups. **Alerts**: Discord alerts and Away mode. **Layout**: arrange windows and save positions. **Plans**: resource plans and the RAM limit. **Phone**: phone monitoring and its access code. |
+| **Alerts** and **Rejoin** chips | Show whether Discord alerts and automatic rejoin are **on** (green, active now because you're away), **standby** (amber, switched on but waiting for you to be away or in Sleep mode) or **off** (grey). Click Rejoin to switch it on or off; click Alerts to open the alert settings. |
 | **At PC / Away / Sleep** chip | Shows whether Discord alerts and automatic reopening are active. Click to turn **Sleep mode** on (count as away even while you use the PC) or off. Appears once Discord alerts or automatic reopening are set up. |
 | **Ignored** | Lists ignored clients, restores original window placements. |
 

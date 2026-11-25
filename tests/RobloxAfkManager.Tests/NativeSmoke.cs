@@ -83,6 +83,9 @@ internal static class NativeSmoke
             host.Close(); UiSmoke.Pump();
         }
     }
+    // A button's text, whether it is plain content or an icon followed by a label.
+    internal static string Label(Button button) => button.Content as string
+        ?? string.Concat(Descendants(button).OfType<TextBlock>().Where(t => t.Text.Length > 0 && t.Text[0] < '').Select(t => t.Text));
     internal static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -226,7 +229,7 @@ internal static class NativeSmoke
             var popup = (System.Windows.Controls.Primitives.Popup)host.FindName("SettingsPopup");
             ((RadioButton)host.FindName("SettingsTabPhone")).IsChecked = true; UiSmoke.Pump(); var phone = (FrameworkElement)host.FindName("SettingsPhonePanel");
             Program.Check(popup.IsOpen);
-            var start = Descendants(phone).OfType<Button>().Single(b => Equals(b.Content, "Start monitoring"));
+            var start = Descendants(phone).OfType<Button>().Single(b => NativeSmoke.Label(b) == "Start monitoring");
             Program.Check(start.Command?.CanExecute(null) == true); start.Command!.Execute(null);
             UiSmoke.PumpUntil(() => !vm.Remote.Busy, TimeSpan.FromSeconds(10));
             Program.Check(vm.Remote.Running && vm.Remote.AccessCode.Length == 48, vm.Remote.Status);

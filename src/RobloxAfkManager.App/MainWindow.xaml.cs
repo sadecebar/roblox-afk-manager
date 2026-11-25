@@ -18,11 +18,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = this.viewModel = viewModel;
+        SettingsPopup.Opened += (_, _) => AnimateIn(SettingsPopup);
         foreach (var popup in new[] { IgnoredPopup, NamePopup, ActivityPopup, OfflinePopup })
         {
             popup.PopupAnimation = SystemParameters.ClientAreaAnimation ? PopupAnimation.Fade : PopupAnimation.None;
             popup.Opened += (_, _) =>
             {
+                AnimateIn(popup);
                 if (popup.Child is not Border border) return;
                 double availableHeight = Math.Max(160, SystemParameters.WorkArea.Height - 80);
                 if (border.Child is ScrollViewer existing) existing.MaxHeight = Math.Min(500, availableHeight);
@@ -38,6 +40,18 @@ public partial class MainWindow : Window
         viewModel.AlertRaised += OnAlert;
         Closed += (_, _) => { viewModel.AlertRaised -= OnAlert; desktopAlerts?.Dispose(); viewModel.Dispose(); };
         PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && (IgnoredPopup.IsOpen || SettingsPopup.IsOpen || NamePopup.IsOpen || ActivityPopup.IsOpen || OfflinePopup.IsOpen)) { IgnoredPopup.IsOpen = false; SettingsPopup.IsOpen = false; NamePopup.IsOpen = false; ActivityPopup.IsOpen = false; OfflinePopup.IsOpen = false; e.Handled = true; } };
+    }
+    // Panels ease in: a short fade and a few pixels of upward slide. Skipped when Windows animations are off.
+    private static void AnimateIn(Popup popup)
+    {
+        if (!SystemParameters.ClientAreaAnimation || popup.Child is not FrameworkElement child) return;
+        var shift = new System.Windows.Media.TranslateTransform(0, 10);
+        child.RenderTransform = shift; child.Opacity = 0;
+        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(170)) { EasingFunction = ease };
+        fade.Completed += (_, _) => { child.BeginAnimation(UIElement.OpacityProperty, null); child.Opacity = 1; };
+        child.BeginAnimation(UIElement.OpacityProperty, fade);
+        shift.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(210)) { EasingFunction = ease });
     }
     private void WorkspaceRoot_SizeChanged(object sender, SizeChangedEventArgs e) => WorkspaceAppearance.SetIsCompact(WorkspaceRoot, e.NewSize.Width < 980);
     private void TogglePanel(Popup target)
@@ -83,6 +97,12 @@ public partial class MainWindow : Window
         string cookie = CookieBox.Password; CookieBox.Clear();
         await viewModel.AddLoginAsync(cookie);
     }
+    private void AlertsChip_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsTabAlerts.IsChecked = true;
+        if (!SettingsPopup.IsOpen) TogglePanel(SettingsPopup);
+    }
+    private void ReopenChip_Click(object sender, RoutedEventArgs e) => viewModel.ToggleReopen();
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => TogglePanel(SettingsPopup);
     private void AwayChip_Click(object sender, RoutedEventArgs e) => viewModel.ToggleSleep();
     private void ClearMain_Click(object sender, RoutedEventArgs e) => viewModel.MainClient = null;

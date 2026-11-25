@@ -41,7 +41,31 @@ public sealed partial class MainViewModel
     public void CycleAway() => AwayModeIndex = ((int)awayMode + 1) % 3;
     // Sleep mode: count as away even while using the PC, for when you are busy with something else.
     public void ToggleSleep() => AwayModeIndex = awayMode == AwayModes.Away ? (int)AwayModes.Auto : (int)AwayModes.Away;
-    private void RaiseAway() { Raise(nameof(AwayModeIndex)); Raise(nameof(AwayMinutes)); Raise(nameof(IsAway)); Raise(nameof(AwayLabel)); Raise(nameof(SleepMode)); Raise(nameof(AwayHint)); }
+    // On = doing its job right now (you are away). Standby = switched on but waiting for you to be away. Off = not set up.
+    public string AlertsState => !webhook.Configured ? "Off" : IsAway ? "On" : "Standby";
+    public string AlertsLabel => "Alerts " + AlertsState.ToLowerInvariant();
+    public string AlertsHint => AlertsState switch
+    {
+        "On" => "Discord alerts are on: you're away, so problems are sent to Discord and ping you. Click to open the alert settings.",
+        "Standby" => "Discord alerts are set up but on standby while you're at the PC. They start when you're away, or in Sleep mode. Click to open the alert settings.",
+        _ => "Discord alerts are off. Click to set them up.",
+    };
+    public string ReopenState => !autoReopen ? "Off" : IsAway ? "On" : "Standby";
+    public string ReopenLabel => "Rejoin " + ReopenState.ToLowerInvariant();
+    public string ReopenHint => ReopenState switch
+    {
+        "On" => "Automatic rejoin is on: you're away, so crashed or kicked accounts are reopened. Click to turn it off.",
+        "Standby" => "Automatic rejoin is on but waiting: it only acts while you're away, or in Sleep mode. Click to turn it off.",
+        _ => "Automatic rejoin is off. Click to turn it on: crashed or kicked accounts are reopened while you're away.",
+    };
+    private void RaiseIndicators() { Raise(nameof(AlertsState)); Raise(nameof(AlertsLabel)); Raise(nameof(AlertsHint)); Raise(nameof(ReopenState)); Raise(nameof(ReopenLabel)); Raise(nameof(ReopenHint)); }
+    public void ToggleReopen()
+    {
+        if (!autoReopen && gamePlaceId == 0) { Warning = true; Message = "Set a game first (Settings → Accounts → Game), then turn automatic rejoin on."; return; }
+        if (!autoReopen && vault.Logins.Count == 0) { Warning = true; Message = "Automatic rejoin needs a saved login. Add one in Settings → Accounts."; return; }
+        AutoReopen = !autoReopen;
+    }
+    private void RaiseAway() { RaiseIndicators(); Raise(nameof(AwayModeIndex)); Raise(nameof(AwayMinutes)); Raise(nameof(IsAway)); Raise(nameof(AwayLabel)); Raise(nameof(SleepMode)); Raise(nameof(AwayHint)); }
 
     private void LoadAway()
     {
@@ -108,7 +132,7 @@ public sealed partial class MainViewModel
             if (Clients.Any(c => !c.IsIgnored && c.Label == label && (c.Session is null || c.Session.Phase == SessionPhase.Joined)))
                 Announce(new(DateTimeOffset.UtcNow, label, "Back online.", false), false);
     }
-    private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); Raise(nameof(BoardEnabled)); Raise(nameof(ShowAwayChip)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
+    private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); RaiseIndicators(); Raise(nameof(BoardEnabled)); Raise(nameof(ShowAwayChip)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
 
     public void SaveDiscord(string? url, string? userId)
     {
