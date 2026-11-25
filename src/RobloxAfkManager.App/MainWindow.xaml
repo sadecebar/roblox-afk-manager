@@ -310,8 +310,8 @@
             <TextBlock Text="{Binding AwayHint}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
             <TextBlock Text="Discord alerts and automatic reopening only happen while you are away. At the PC nothing is sent or reopened, so closing a client yourself is always respected. When you step away, one message lists accounts that were already down." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
             <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
-            <TextBlock Text="Alerts and log channel" Style="{StaticResource PopupTitle}" FontSize="15" />
-            <TextBlock Text="Get a Discord message when an account disconnects, its game or window closes, it freezes, or it loses its login, even when you're away from the PC." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
+            <TextBlock Text="Step 1 · Alerts and log channel" Style="{StaticResource PopupTitle}" FontSize="15" />
+            <TextBlock Text="Everything that happens goes to one Discord channel: disconnects, closed games, frozen clients, lost logins, 'back online' updates and when the manager starts or closes. To get the address: in that channel open Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL, then paste it below." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
             <TextBlock Text="Webhook address for alerts, pings and the log (channel settings → Integrations → Webhooks)" TextWrapping="Wrap" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,0,0,4" />
             <PasswordBox x:Name="DiscordUrlBox" AutomationProperties.Name="Discord webhook address" />
             <TextBlock Text="Your Discord user ID (optional: this is what makes your phone ping)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
@@ -324,8 +324,8 @@
             <TextBlock Text="{Binding DiscordSummary}" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
             <TextBlock Text="Alerts contain account names and what happened, and go only to Discord. The webhook is stored encrypted on this PC. If the PC itself shuts down, no alert can be sent." Foreground="{StaticResource SubtleBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0" />
             <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
-            <TextBlock Text="Live status board" Style="{StaticResource PopupTitle}" FontSize="15" />
-            <TextBlock Text="One message that lists every account and is edited in place whenever something changes, so a channel stays quiet. Put it in its own channel, apart from the alerts." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
+            <TextBlock Text="Step 2 · Live status board (optional)" Style="{StaticResource PopupTitle}" FontSize="15" />
+            <TextBlock Text="One message that lists every account and is edited in place, so it never fills the channel. Tick the box. To keep it out of your log, make a second channel with its own webhook (same steps as above) and paste that address in the box below. Leave the box empty to show the board in the Step 1 channel." Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8" />
             <CheckBox Content="Keep one live status message with every account (edited in place)" IsChecked="{Binding BoardEnabled}" Margin="0,0,0,0" ToolTip="Posts a single message listing every account and its state, and edits it whenever something changes instead of sending new messages. Turning it off deletes the message." />
             <TextBlock Text="Board channel webhook (optional: leave empty to post the board in the alerts channel)" Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,4" />
             <PasswordBox x:Name="BoardUrlBox" AutomationProperties.Name="Board channel webhook address" />
