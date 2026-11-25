@@ -17,6 +17,8 @@
 - The fix taken is posted to the channel too ("Fix: closed the stuck client and reopened it").
 
 ### Fixes
+- **A disconnect is no longer missed in a busy game.** The manager only looked at the first and last 128 KB of each Roblox log. A busy game writes that much in minutes, so a disconnect older than that was never seen and the card kept saying "Joined" (and the account was never restarted). It now follows every join and disconnect line as the log grows.
+- The disconnect alert now says when an account has no saved login and so cannot be restarted automatically.
 - **Disconnects are now detected.** The log reader missed the lines Roblox writes when the server connection ends ("Client has been disconnected with reason…", "Lost connection with reason…"), so a client left on an error screen (such as error 257) stayed "Joined" with no alert and no rejoin. Both are recognized now.
 - **Auto-rejoin waits 5 minutes** (was 60 seconds) before closing and restarting a disconnected client, so one that reconnects by itself is left alone.
 

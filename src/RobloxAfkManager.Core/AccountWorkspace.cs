@@ -113,14 +113,34 @@ public static partial class SessionLogParser
             }
             // "Lost connection with reason" / "Client has been disconnected with reason" are what Roblox writes when the server
             // connection ends (error prompts such as 257). A client that reconnects reports a new join, which replaces this phase.
-            else if (tag == "Network" && (message.StartsWith("Client:Disconnect", StringComparison.Ordinal) || message.StartsWith("Connection lost:", StringComparison.Ordinal)
-                || message.StartsWith("Lost connection with reason", StringComparison.Ordinal) || message.StartsWith("Client has been disconnected with reason", StringComparison.Ordinal)))
+            else if (tag == "Network" && IsDisconnectMessage(message))
             { phase = SessionPhase.Disconnected; last = at; reason = ReadReason(message) ?? reason; }
             else if (tag == "GameJoinUtil" && message.StartsWith("GameJoinUtil::joinGamePostStandard:", StringComparison.Ordinal))
             { phase = SessionPhase.Joining; joined = null; place = universe = null; last = at; reason = null; }
         }
         return new(user, place, universe, phase, joined, last, checkedAt, authFailures, phase == SessionPhase.Disconnected ? reason : null);
     }
+    private static bool IsDisconnectMessage(string message) =>
+        message.StartsWith("Client:Disconnect", StringComparison.Ordinal) || message.StartsWith("Connection lost:", StringComparison.Ordinal)
+        || message.StartsWith("Lost connection with reason", StringComparison.Ordinal) || message.StartsWith("Client has been disconnected with reason", StringComparison.Ordinal);
+
+    // True for a line Read() acts on (a join, a join attempt or a lost connection). Lets a reader keep only these lines
+    // from a log that is tens of megabytes of game output, so an event from an hour ago is not missed.
+    public static bool IsSessionMarker(string line)
+    {
+        if (!line.Contains("[FLog::", StringComparison.Ordinal)) return false;
+        var marker = Marker().Match(line);
+        if (!marker.Success) return false;
+        string tag = marker.Groups[2].Value, message = marker.Groups[3].Value.Trim();
+        return tag switch
+        {
+            "GameJoinLoadTime" => message.StartsWith("Report game_join_loadtime:", StringComparison.Ordinal),
+            "Network" => IsDisconnectMessage(message),
+            "GameJoinUtil" => message.StartsWith("GameJoinUtil::joinGamePostStandard:", StringComparison.Ordinal),
+            _ => false
+        };
+    }
+
     // The text Roblox gives for why the connection ended ("... with reason: Lost connection ..."), shortened for alerts and the journal.
     private static string? ReadReason(string message)
     {
@@ -176,7 +196,7 @@ public sealed class SessionHealthTracker
             if (client.Session is { } session && now - session.CheckedAt < TimeSpan.FromMinutes(3))
             {
                 if (session.Phase == SessionPhase.Disconnected && session.EventAt is { } disconnected && state.LastDisconnect != disconnected)
-                { state.LastDisconnect = disconnected; result.Add(new(now, client.Label, session.Reason is { } why ? $"Roblox's log reports a disconnect: {why} Check the client." : "Roblox's log reports a disconnect. Check the client.", true)); }
+                { state.LastDisconnect = disconnected; result.Add(new(now, client.Label, session.Reason is { } why ? $"Roblox's log reports a disconnect: {why.TrimEnd('.')}. Check the client." : "Roblox's log reports a disconnect. Check the client.", true)); }
                 if (session.Phase == SessionPhase.Joined && state.LastDisconnect is { } lost && session.JoinedAt > lost)
                 { state.LastDisconnect = null; result.Add(new(now, client.Label, "A new game join was reported by Roblox.", false)); }
                 if (session.Phase == SessionPhase.Joining && session.EventAt is { } joining && now - joining > TimeSpan.FromMinutes(2) && state.LastJoinWarning != joining)

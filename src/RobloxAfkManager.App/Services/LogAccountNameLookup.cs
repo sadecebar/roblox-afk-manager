@@ -116,6 +116,7 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
         var paths = files.Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var path in checkedAt.Keys.Where(p => !paths.Contains(p)).ToArray()) { checkedAt.Remove(path); bindings.Remove(path); }
         foreach (var path in authLogs.Keys.Where(p => !paths.Contains(p)).ToArray()) authLogs.Remove(path);
+        foreach (var path in markerLogs.Keys.Where(p => !paths.Contains(p)).ToArray()) markerLogs.Remove(path);
         foreach (var file in files.OrderBy(f => checkedAt.GetValueOrDefault(f.FullName)).Take(16))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -127,14 +128,58 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
                 var matches = owners(file.FullName).Where(live.Contains).Distinct().ToArray();
                 if (matches.Length != 1) continue;
                 string text = ReadBoundedLog(file.FullName);
+                // The session is read from the start of the log plus every join/disconnect line since, not from the last 128 KB:
+                // a busy game writes that much in minutes, which hid a disconnect that was an hour old.
+                string sessionText = ReadHead(file.FullName) + "\n" + ReadMarkers(file.FullName);
                 if (AccountNames.ReadLocalUserId(text) is { } userId)
-                    bindings[file.FullName] = new(matches[0], userId, now, SessionLogParser.Read(text, matches[0], now) with { UserId = userId, AuthFailures = CountAuthFailures(file.FullName, matches[0], now), RecentActivity = RecentActivity(file.FullName, now) });
+                    bindings[file.FullName] = new(matches[0], userId, now, SessionLogParser.Read(sessionText, matches[0], now) with { UserId = userId, AuthFailures = CountAuthFailures(file.FullName, matches[0], now), RecentActivity = RecentActivity(file.FullName, now) });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or ArgumentException or System.Text.RegularExpressions.RegexMatchTimeoutException)
             { /* No raw log contents, names, URLs or file paths are logged. */ }
         }
         return bindings.Values.GroupBy(b => b.Process).Where(g => g.Select(b => b.UserId).Distinct().Count() == 1)
             .ToDictionary(g => g.Key, g => g.First().UserId);
+    }
+
+    // Join / disconnect lines of each log, kept as the file grows. Each file remembers how far it has been read.
+    private sealed class MarkerLog { public long Offset = -1; public readonly List<string> Lines = []; }
+    private readonly Dictionary<string, MarkerLog> markerLogs = new(StringComparer.OrdinalIgnoreCase);
+    private const long MarkerFirstReadLimit = 96L * 1024 * 1024;
+    private const int MarkerChunk = 8 * 1024 * 1024, MarkerKeep = 400;
+
+    private string ReadMarkers(string path)
+    {
+        if (!markerLogs.TryGetValue(path, out var log)) markerLogs[path] = log = new();
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        long length = stream.Length;
+        bool skipPartial = false;
+        if (log.Offset < 0 || log.Offset > length) { log.Offset = Math.Max(0, length - MarkerFirstReadLimit); skipPartial = log.Offset > 0; log.Lines.Clear(); }
+        var buffer = new byte[(int)Math.Min(MarkerChunk, Math.Max(1, length - log.Offset))];
+        while (log.Offset < length)
+        {
+            stream.Seek(log.Offset, SeekOrigin.Begin);
+            int total = 0, read;
+            int want = (int)Math.Min(buffer.Length, length - log.Offset);
+            while (total < want && (read = stream.Read(buffer, total, want - total)) > 0) total += read;
+            int end = Array.LastIndexOf(buffer, (byte)'\n', Math.Max(0, total - 1), total);
+            if (end < 0) { if (total < buffer.Length) break; end = total - 1; } // no complete line yet: wait for more (or skip an oversized one)
+            int from = 0;
+            if (skipPartial) { int first = Array.IndexOf(buffer, (byte)'\n', 0, end + 1); from = first < 0 ? end + 1 : first + 1; skipPartial = false; }
+            foreach (var line in Encoding.UTF8.GetString(buffer, from, Math.Max(0, end + 1 - from)).Split('\n'))
+                if (line.Length > 25 && SessionLogParser.IsSessionMarker(line)) log.Lines.Add(line.TrimEnd('\r'));
+            log.Offset += end + 1;
+        }
+        if (log.Lines.Count > MarkerKeep) log.Lines.RemoveRange(0, log.Lines.Count - MarkerKeep);
+        return string.Join("\n", log.Lines);
+    }
+
+    private static string ReadHead(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        var buffer = new byte[128 * 1024];
+        int total = 0, read;
+        while (total < buffer.Length && (read = stream.Read(buffer, total, buffer.Length - total)) > 0) total += read;
+        return Encoding.UTF8.GetString(buffer, 0, total);
     }
 
     private static string ReadBoundedLog(string path)

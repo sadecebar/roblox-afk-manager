@@ -42,6 +42,19 @@ internal static class AccountNameTests
             Program.Check(resolver.ResolveAsync([process with { StartTimeUtcTicks = process.StartTimeUtcTicks + 1 }], default).GetAwaiter().GetResult().Count == 0);
             Program.Check(requests == 1, "Ambiguous or stale process triggered a lookup");
         });
+        test("A disconnect in the middle of a huge log is still found, and a later rejoin replaces it", () =>
+        {
+            using var fixture = new NameFixture(); var process = new ProcessIdentity(123, DateTime.UtcNow.AddHours(-1).Ticks);
+            string Stamp(int minutesAgo) => DateTime.UtcNow.AddMinutes(-minutesAgo).ToString("O");
+            string Noise() => string.Concat(Enumerable.Repeat("2026-01-01T00:00:00.000Z,1,abc,6 [FLog::Output] ordinary game output line that is not a session event" + (char)10, 9000));
+            string lost = Stamp(30) + ",1,abc,7 [FLog::Network] Client has been disconnected with reason: Lost connection to the game server, please reconnect";
+            File.WriteAllText(fixture.Log, JoinLine(77) + "\n" + Noise() + "\n" + lost + "\n" + Noise() + "\n");
+            var resolver = new LogAccountNameLookup(fixture.Directory, _ => [process], (ids, _) => Task.FromResult<IReadOnlyDictionary<long, string>>(new Dictionary<long, string> { [77] = "Fixture" }));
+            var seen = resolver.ResolveDetailsAsync([process], default).GetAwaiter().GetResult()[process].Session;
+            Program.Check(seen.Phase == SessionPhase.Disconnected && seen.Reason is { } why && why.StartsWith("Lost connection"), "disconnect hidden by the middle of the log: " + seen.Phase);
+            File.AppendAllText(fixture.Log, Stamp(1) + ",1,abc,6 [FLog::GameJoinLoadTime] Report game_join_loadtime: placeid:8, userid:77, universeid:18,\n" + Noise() + "\n");
+            Program.Check(resolver.ResolveDetailsAsync([process], default).GetAwaiter().GetResult()[process].Session.Phase == SessionPhase.Joined, "rejoin after the disconnect was not seen");
+        });
         test("Account lookup reads bounded log tails and tolerates offline public lookup", () =>
         {
             using var fixture = new NameFixture(); var process = new ProcessIdentity(123, DateTime.UtcNow.AddHours(-1).Ticks);

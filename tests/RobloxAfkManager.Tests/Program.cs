@@ -223,7 +223,7 @@ internal static class Program
                     Check(quiet.RootElement.GetProperty("content").ValueKind == System.Text.Json.JsonValueKind.Null);
                     Check(quiet.RootElement.GetProperty("allowed_mentions").GetProperty("users").GetArrayLength() == 0);
                 }
-                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Disconnected again.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Notice);
+                Thread.Sleep(400); hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Disconnected again.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Notice);
                 hook.Enqueue(new(DateTimeOffset.UtcNow, "alt2", "Could not be reopened automatically: login expired.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
                 for (int i = 0; i < 40 && fake.Requests.Count < 2; i++) Thread.Sleep(50);
                 Check(fake.Requests.Count == 2);

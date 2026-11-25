@@ -145,14 +145,18 @@ public sealed partial class MainViewModel
 
     // A disconnect or closed window the manager repairs by itself (Auto-reopen on and a saved login) is posted without a
     // ping: the person only needs to know if the repair fails, which is its own pinging alert.
-    private bool RepairedAutomatically(ActivityEntry entry)
+    private static bool IsRepairable(ActivityEntry entry) => entry.Warning
+        && (entry.Message.StartsWith("Roblox's log reports a disconnect", StringComparison.Ordinal) || entry.Message.StartsWith("Window closed", StringComparison.Ordinal));
+    private bool HasSavedLogin(string label)
     {
-        if (!autoReopen || !entry.Warning) return false;
-        if (!entry.Message.StartsWith("Roblox's log reports a disconnect", StringComparison.Ordinal) && !entry.Message.StartsWith("Window closed", StringComparison.Ordinal)) return false;
         var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
-        long? id = Clients.FirstOrDefault(c => c.Label == entry.Label)?.AccountId ?? accountLabels.FirstOrDefault(p => p.Value == entry.Label).Key;
+        long? id = Clients.FirstOrDefault(c => c.Label == label)?.AccountId ?? accountLabels.FirstOrDefault(p => p.Value == label).Key;
         return id is { } known && known != 0 && saved.Contains(known);
     }
+    private bool RepairedAutomatically(ActivityEntry entry) => autoReopen && IsRepairable(entry) && HasSavedLogin(entry.Label);
+    // Says so when nothing will repair the account, so the alert is not a silent promise.
+    private ActivityEntry Explain(ActivityEntry entry) => autoReopen && IsRepairable(entry) && !HasSavedLogin(entry.Label)
+        ? entry with { Message = entry.Message + " No saved login for this account, so it cannot be restarted automatically." } : entry;
 
     // Anything still reported as down after this long was not fixed by the automatic repair, so it now pings.
     private static readonly TimeSpan EscalateAfter = TimeSpan.FromMinutes(15);

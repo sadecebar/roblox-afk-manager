@@ -143,8 +143,9 @@ public sealed partial class MainViewModel
         UpdateAway();
         var events = health.Observe(Clients.Select(c => new ClientHealth(ProcessIdentity.From(c.Identity), c.Label,
             c.IsIgnored || (RequiresProfileIdentification && c.AccountId is null), c.Status, c.Session)), DateTimeOffset.UtcNow);
-        foreach (var entry in events)
+        foreach (var raw in events)
         {
+            var entry = Explain(raw);
             Journal(entry);
             Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);
             if (entry.Warning) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
