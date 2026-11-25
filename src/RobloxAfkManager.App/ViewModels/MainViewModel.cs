@@ -56,7 +56,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public AsyncCommand ApplyMemoryCapCommand { get; }
     public AsyncCommand ResetMemoryCapCommand { get; }
     public IReadOnlyList<ResourcePlan> ResourcePlans { get; } = Enum.GetValues<ResourcePlan>();
-    private IEnumerable<AsyncCommand> Commands => [DetectCommand, ArrangeCommand, FocusCommand, FocusClientCommand, PrepareDashboardCommand, UnignoreClientCommand, RestoreGridCommand, RestoreOriginalsCommand, ApplyResourcePlanCommand, ResetResourcePlanCommand, ApplyMemoryCapCommand, ResetMemoryCapCommand, SaveLayoutCommand, ClearLayoutCommand, OpenClosedCommand, OpenSelectedCommand, OpenLoginCommand];
+    private IEnumerable<AsyncCommand> Commands => [DetectCommand, ArrangeCommand, FocusCommand, FocusClientCommand, PrepareDashboardCommand, UnignoreClientCommand, RestoreGridCommand, RestoreOriginalsCommand, ApplyResourcePlanCommand, ResetResourcePlanCommand, ApplyMemoryCapCommand, ResetMemoryCapCommand, SaveLayoutCommand, ClearLayoutCommand, OpenClosedCommand, OpenSelectedCommand, OpenLoginCommand, RestartClientCommand];
 
     public MainViewModel(IWindowSystem? windowSystem = null, IAppLog? appLog = null, IProcessResourceSystem? resourceSystem = null, IWorkingSetSystem? workingSetSystem = null,
         IAccountNameLookup? accountNameLookup = null, IClientNameStore? clientNameStore = null, IWorkspaceStore? workspaceStore = null,

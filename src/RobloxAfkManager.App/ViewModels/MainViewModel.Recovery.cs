@@ -15,6 +15,38 @@ public sealed partial class MainViewModel
     private readonly Queue<DateTimeOffset> recoveryLog = new();
     // Only accounts with a saved login can be restarted, and each at most once per cooldown.
     public bool AutoRecover { get => autoRecover; set => Set(ref autoRecover, value); }
+    // A joined client that logs almost nothing for ten minutes (see SessionLogParser.IsQuiet) is closed and reopened.
+    private bool autoRestartQuiet = true;
+    public bool AutoRestartQuiet { get => autoRestartQuiet; set => Set(ref autoRestartQuiet, value); }
+
+    // The per-client Restart button: always allowed, no cooldown or hourly cap, because the person asked for it.
+    public AsyncCommand RestartClientCommand { get; private set; } = null!;
+    private bool CanRestart(object? parameter) => parameter is ClientTileViewModel { AccountId: { } id } && vault.Logins.Any(l => l.UserId == id) && gamePlaceId > 0 && !recovering && !reopening && !launching && !Busy;
+    private async Task RestartClientAsync(object? parameter)
+    {
+        if (parameter is not ClientTileViewModel { AccountId: { } account } tile || !CanRestart(parameter)) return;
+        recovering = true; recoveredAt[account] = DateTimeOffset.UtcNow;
+        string label = tile.Label;
+        try
+        {
+            string cookie = vault.Cookie(account) ?? throw new InvalidOperationException("The saved login could not be read.");
+            string ticket = await launcher.PrepareAsync(cookie, GamePlaceId, CancellationToken.None);
+            var identity = tile.Identity;
+            var closed = await Task.Run(() => manager.CloseClient(identity));
+            if (!closed.Success) throw new InvalidOperationException(closed.Message);
+            int pid = await launcher.LaunchSafelyAsync(cookie, GamePlaceId, CancellationToken.None, ticket);
+            launchedPids[pid] = account; launchedAt[account] = DateTimeOffset.UtcNow;
+            AddActivity(label, "You restarted this account. Closed the client and reopened it from its saved login.", false, announce: false, info: true);
+            Warning = false; Message = $"{label} was restarted.";
+        }
+        catch (Exception ex)
+        {
+            log.Write($"Restarting account {account} failed.", ex);
+            AddActivity(label, "Restart failed: " + ex.Message, true, announce: false);
+            Warning = true; Message = $"{label}: {ex.Message}";
+        }
+        finally { recovering = false; RefreshLogins(); }
+    }
 
     private IncidentJournal? incidents;
     // Where the morning-after record of problems and fixes is kept (next to the other settings).
@@ -33,13 +65,14 @@ public sealed partial class MainViewModel
 
     private async Task RecoverSignedOutAsync()
     {
-        if (!AutoRecover || gamePlaceId == 0 || reopening || recovering || launching || Busy || disposed) return;
+        if (!(AutoRecover || AutoRestartQuiet) || gamePlaceId == 0 || reopening || recovering || launching || Busy || disposed) return;
         var now = DateTimeOffset.UtcNow;
         var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
         var victim = Clients.FirstOrDefault(c => !c.IsIgnored && c.AccountId is { } id && saved.Contains(id)
-            && c.Session is { AuthFailures: >= AuthFailureThreshold }
+            && (c.Session is { AuthFailures: >= AuthFailureThreshold } || (AutoRestartQuiet && c.IsQuiet))
             && !(recoveredAt.TryGetValue(id, out var at) && now - at < RecoveryCooldown));
         if (victim?.AccountId is not { } account) return;
+        bool quiet = victim.Session is not { AuthFailures: >= AuthFailureThreshold };
         while (recoveryLog.Count > 0 && now - recoveryLog.Peek() > TimeSpan.FromHours(1)) recoveryLog.Dequeue();
         if (recoveryLog.Count >= MaxRecoveriesPerHour)
         {
@@ -60,13 +93,14 @@ public sealed partial class MainViewModel
             if (!closed.Success) throw new InvalidOperationException(closed.Message);
             int pid = await launcher.LaunchSafelyAsync(cookie, GamePlaceId, CancellationToken.None, ticket);
             launchedPids[pid] = account; launchedAt[account] = DateTimeOffset.UtcNow;
-            AddActivity(label, "Roblox ended this account's login. Fix: closed the client and restarted it from its saved login.", false, info: true);
-            Warning = false; Message = $"{label}'s login was lost. Restarted it.";
+            AddActivity(label, quiet ? "Stopped doing anything for 10 minutes (probably stuck on an error box). Fix: closed the client and restarted it from its saved login."
+                : "Roblox ended this account's login. Fix: closed the client and restarted it from its saved login.", false, info: true);
+            Warning = false; Message = quiet ? $"{label} was stuck. Restarted it." : $"{label}'s login was lost. Restarted it.";
         }
         catch (Exception ex)
         {
             log.Write($"Recovering account {account} failed.", ex);
-            AddActivity(label, "Roblox ended this account's login and it could not be restarted: " + ex.Message, true);
+            AddActivity(label, (quiet ? "Stopped doing anything for 10 minutes and it could not be restarted: " : "Roblox ended this account's login and it could not be restarted: ") + ex.Message, true);
             Warning = true; Message = $"{label}: {ex.Message}";
         }
         finally { recovering = false; RefreshLogins(); }

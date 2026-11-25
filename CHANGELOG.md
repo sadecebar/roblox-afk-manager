@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Several clients at once
+- **Opening many accounts now works.** Starting a second Roblox client made the first one leave its game, because clients share a named event (`ROBLOX_singletonEvent`). Before each launch the manager now closes that one handle in the running clients, so all of them stay open. See the README for what this does and does not touch.
+
+### Stuck clients
+- **A client that goes quiet is restarted.** A joined client that logs almost nothing for 10 minutes (under 100 activity lines; healthy ones write 290+) is usually stuck on an error box such as "Teleport Failed". The card shows "Quiet, may be stuck" and the manager closes and reopens it (on by default, once per 20 minutes per account, 4 an hour in total).
+- **Restart button on every card.** Closes that client and reopens it from its saved login, no cooldown.
+
 ### Incident log
 - **`incidents.log` records what happened overnight.** One line per event: time, account, what went wrong (including Roblox's own disconnect reason, such as "authentication failure") and what the manager did about it (closed and reopened from the saved login, or that the fix failed). It is written even when you're at the PC and rotates at 1 MB. It sits in the manager's settings folder.
 

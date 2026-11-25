@@ -5,7 +5,7 @@ namespace RobloxAfkManager.Core;
 
 public enum SessionPhase { Unknown, Joining, Joined, Disconnected }
 public sealed record SessionReport(long? UserId, long? PlaceId, long? UniverseId, SessionPhase Phase,
-    DateTimeOffset? JoinedAt, DateTimeOffset? EventAt, DateTimeOffset CheckedAt, int AuthFailures = 0, string? Reason = null);
+    DateTimeOffset? JoinedAt, DateTimeOffset? EventAt, DateTimeOffset CheckedAt, int AuthFailures = 0, string? Reason = null, int RecentActivity = -1);
 public sealed record AccountDetails(SessionReport Session, string? Username, string? GameName, byte[]? AvatarPng);
 public interface IAccountDetailsLookup : IAccountNameLookup
 {
@@ -53,6 +53,23 @@ public sealed class MemoryWorkspaceStore : IWorkspaceStore
 public static partial class SessionLogParser
 {
     // True for an engine-level "HTTP 401" trace line. The tag must be the line's first tag, so text a game prints can't imitate it.
+    // A joined client that logs almost nothing for ten minutes is stuck (for example on an error box such as "Teleport Failed").
+    // Measured on 12 live clients: stuck ones wrote 40 to 70 activity lines per ten minutes, healthy ones 290 or more.
+    public const int QuietLinesPerTenMinutes = 100;
+    public static bool IsQuiet(SessionReport? session, DateTimeOffset now) =>
+        session is { Phase: SessionPhase.Joined, JoinedAt: { } joined, RecentActivity: >= 0 and < QuietLinesPerTenMinutes }
+        && now - session.CheckedAt < TimeSpan.FromMinutes(3) && now - joined >= TimeSpan.FromMinutes(15);
+
+    // True for a timestamped line that shows the client doing something. Roblox writes a constant WndProcessCheck
+    // heartbeat (about ten lines a second, even on a client stuck on an error box), which says nothing about the game.
+    public static bool TryReadActivity(string line, out DateTimeOffset at)
+    {
+        at = default;
+        if (line.Length < 25 || line[4] != '-' || line[10] != 'T' || line.Contains("WndProcessCheck", StringComparison.Ordinal) || line.Contains("ReloadTelemetry", StringComparison.Ordinal)) return false;
+        int comma = line.IndexOf(',');
+        return comma > 18 && DateTimeOffset.TryParse(line.AsSpan(0, comma), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out at);
+    }
+
     public static bool TryReadAuthFailure(string line, out DateTimeOffset at)
     {
         at = default;

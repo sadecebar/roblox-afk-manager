@@ -58,7 +58,9 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
 
     // HTTP 401s are counted as the log grows instead of from a small slice of it, so a slow trickle and a heavy burst
     // are both measured over the same ten minutes. Each file keeps the position it was read up to.
-    private sealed class AuthLog { public long Offset = -1; public readonly Queue<DateTimeOffset> Seen = new(); }
+    private sealed class AuthLog { public long Offset = -1; public readonly Queue<DateTimeOffset> Seen = new(), Active = new(); }
+    // Lines that show real activity (not the heartbeat) in the last ten minutes, kept up to date by CountAuthFailures.
+    public int RecentActivity(string path, DateTimeOffset now) => authLogs.TryGetValue(path, out var log) ? log.Active.Count(t => now - t <= TimeSpan.FromMinutes(10)) : -1;
     private readonly Dictionary<string, AuthLog> authLogs = [];
     private const int AuthReadLimit = 4 * 1024 * 1024;
 
@@ -72,7 +74,7 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
         if (log.Offset < 0 || log.Offset > length || length - log.Offset > AuthReadLimit)
         { log.Offset = Math.Max(0, length - AuthReadLimit); skipPartial = log.Offset > 0; }
         int count = (int)Math.Min(length - log.Offset, AuthReadLimit);
-        if (count <= 0) { while (log.Seen.Count > 0 && now - log.Seen.Peek() > TimeSpan.FromMinutes(10)) log.Seen.Dequeue(); return log.Seen.Count; }
+        if (count <= 0) { while (log.Active.Count > 0 && now - log.Active.Peek() > TimeSpan.FromMinutes(10)) log.Active.Dequeue(); while (log.Seen.Count > 0 && now - log.Seen.Peek() > TimeSpan.FromMinutes(10)) log.Seen.Dequeue(); return log.Seen.Count; }
         var buffer = new byte[count];
         stream.Seek(log.Offset, SeekOrigin.Begin);
         int total = 0, read;
@@ -84,9 +86,13 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
             int from = 0;
             if (skipPartial) { int first = Array.IndexOf(buffer, (byte)'\n', 0, Math.Max(0, end)); from = first < 0 ? end : first + 1; }
             foreach (var line in Encoding.UTF8.GetString(buffer, from, Math.Max(0, end - from)).Split('\n'))
+            {
                 if (SessionLogParser.TryReadAuthFailure(line, out var at) && at >= start.AddSeconds(-2) && at <= now.AddMinutes(1)) log.Seen.Enqueue(at);
+                else if (SessionLogParser.TryReadActivity(line, out var active) && active >= start.AddSeconds(-2) && active <= now.AddMinutes(1)) log.Active.Enqueue(active);
+            }
             log.Offset += end + 1;
         }
+        while (log.Active.Count > 0 && now - log.Active.Peek() > TimeSpan.FromMinutes(10)) log.Active.Dequeue();
         while (log.Seen.Count > 0 && now - log.Seen.Peek() > TimeSpan.FromMinutes(10)) log.Seen.Dequeue();
         return log.Seen.Count;
     }
@@ -122,7 +128,7 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
                 if (matches.Length != 1) continue;
                 string text = ReadBoundedLog(file.FullName);
                 if (AccountNames.ReadLocalUserId(text) is { } userId)
-                    bindings[file.FullName] = new(matches[0], userId, now, SessionLogParser.Read(text, matches[0], now) with { UserId = userId, AuthFailures = CountAuthFailures(file.FullName, matches[0], now) });
+                    bindings[file.FullName] = new(matches[0], userId, now, SessionLogParser.Read(text, matches[0], now) with { UserId = userId, AuthFailures = CountAuthFailures(file.FullName, matches[0], now), RecentActivity = RecentActivity(file.FullName, now) });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or ArgumentException or System.Text.RegularExpressions.RegexMatchTimeoutException)
             { /* No raw log contents, names, URLs or file paths are logged. */ }

@@ -134,6 +134,7 @@ public sealed partial class MainViewModel
         spacingSeconds = ReadSpacing(); gamePlaceId = ReadGame();
         OpenClosedCommand = new(OpenClosedAsync, () => HasClosedLogins, HandleError);
         OpenSelectedCommand = new(OpenSelectedAsync, () => !launching && gamePlaceId > 0 && SelectedCount > 0, HandleError);
+        RestartClientCommand = new(RestartClientAsync, CanRestart, HandleError);
         OpenLoginCommand = new(OpenOneAsync, p => !launching && gamePlaceId > 0 && p is SavedLoginView { Running: false }, HandleError);
         RemoveLoginCommand = new(parameter =>
         {

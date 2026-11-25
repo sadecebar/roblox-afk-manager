@@ -277,6 +277,7 @@
             <TextBlock Text="Game to open (roblox.com/games/… link or place id)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
             <TextBox Text="{Binding GameLink, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Game link or place id" />
             <CheckBox Content="When I'm away, reopen accounts that crash or get kicked" IsChecked="{Binding AutoReopen}" Margin="0,8,0,0" ToolTip="While you are away from the PC (see the Alerts tab), an account whose window closes, or that is kicked and left on the error screen, is started again from its saved login. Needs a saved login and a game. At most 3 times an hour per account and 24 an hour in total." />
+          <CheckBox Content="Restart an account that goes quiet for 10 minutes" IsChecked="{Binding AutoRestartQuiet}" Margin="0,8,0,0" ToolTip="A joined client that writes almost nothing to its log for 10 minutes is usually stuck on an error box (for example Teleport Failed). The manager closes it and reopens it from its saved login. At most once per 20 minutes per account, 4 an hour in total." />
           <CheckBox Content="Restart an account when Roblox ends its login" IsChecked="{Binding AutoRecover}" Margin="0,8,0,0" ToolTip="When a client's login is ended (it freezes, then gets kicked), the manager restarts just that account from its saved login. At most once per 20 minutes per account." />
             <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="56" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
               <TextBlock Text="Seconds between accounts" Foreground="{StaticResource SubtleBrush}" FontSize="11" VerticalAlignment="Center" />
@@ -560,11 +561,14 @@
             <!-- Actions -->
             <Grid Grid.Row="3">
               <Grid.Style><Style TargetType="Grid"><Setter Property="Margin" Value="0,8,0,0" /><Style.Triggers><Trigger Property="controls:CompactDashboardPanel.IsDense" Value="True"><Setter Property="Margin" Value="0,2,0,0" /></Trigger></Style.Triggers></Style></Grid.Style>
-              <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="6" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Button Grid.Column="2" Style="{StaticResource CardAction}" Command="{Binding DataContext.RestartClientCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" ToolTip="Close this client and reopen it from its saved login (needs a saved login and a game)" AutomationProperties.Name="{Binding Label, StringFormat=Restart client {0}}">
+                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" FontSize="11" /><TextBlock Text="Restart" Margin="6,0,0,0" VerticalAlignment="Center" Style="{StaticResource DenseHiddenText}" /></StackPanel>
+              </Button>
               <Button x:Name="ShowClientButton" Style="{StaticResource CardAction}" Command="{Binding DataContext.FocusClientCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" ToolTip="Bring this client to the foreground" AutomationProperties.Name="{Binding Label, StringFormat=Show client {0}}">
                 <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8A7;" Style="{StaticResource Glyph}" FontSize="11" /><TextBlock Text="Show" Margin="6,0,0,0" VerticalAlignment="Center" Style="{StaticResource DenseHiddenText}" /></StackPanel>
               </Button>
-              <CheckBox Grid.Column="2" Content="Ignore" IsChecked="{Binding IsIgnored}" IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=ListBox}}" Style="{StaticResource IgnoreAction}" ToolTip="Hide this client and exclude it from bulk actions. Show it again from Ignored." AutomationProperties.Name="{Binding Label, StringFormat=Ignore client {0}}" />
+              <CheckBox Grid.Column="4" Content="Ignore" IsChecked="{Binding IsIgnored}" IsEnabled="{Binding DataContext.IsIdle, RelativeSource={RelativeSource AncestorType=ListBox}}" Style="{StaticResource IgnoreAction}" ToolTip="Hide this client and exclude it from bulk actions. Show it again from Ignored." AutomationProperties.Name="{Binding Label, StringFormat=Ignore client {0}}" />
             </Grid>
           </Grid>
         </Grid>

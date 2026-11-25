@@ -164,6 +164,8 @@ Everything above works without this. It only matters if you want the manager to 
 - **Game to open:** paste a `roblox.com/games/…` link or a place id in **Settings → Accounts**. Nothing is opened until you set one.
 - **Arrange** (Settings → Layout) puts the windows on a grid on the monitor you pick, and can maximize one main client. **Save positions** remembers each window's spot, and they return there when the accounts are reopened.
 - **When I'm away, reopen accounts that crash or get kicked** (off by default; Settings → Accounts). While you are away from the PC, an account whose window closes, or that was kicked and is sitting on the error screen for a minute, is started again from its saved login, in your game. It only works for accounts with a saved login. At the PC nothing is reopened, so closing a client yourself is always respected. It waits 25 seconds before reopening (so a window that blinks out is left alone), starts one account at a time using your spacing setting, reopens each account at most 3 times an hour (then it gives up and tells you) and at most 24 accounts an hour in total. If you use Discord alerts, the alert for that account turns green when it has really rejoined.
+- **Restart an account that goes quiet for 10 minutes** (on by default; Settings → Accounts). A joined client that writes almost nothing to its log for 10 minutes is usually stuck on an error box such as "Teleport Failed" (a healthy one writes about 29+ lines a minute, a stuck one 4 to 7; Roblox's constant heartbeat lines are ignored). The card shows "Quiet, may be stuck" and the manager closes and reopens it. Same limits as below.
+- **Restart button.** Every card has a **Restart** button that closes that client and reopens it from its saved login, with no cooldown.
 - **Restart an account when Roblox ends its login** (off by default). When a client's log shows a burst of "401 Unauthorized" answers, its login was ended and it will freeze and get kicked. The manager then closes and reopens just that account. At most 4 restarts an hour overall, and one per account every 20 minutes. Every restart is listed in **Activity**.
 
 **How an account gets saved**
@@ -177,7 +179,7 @@ The manager asks Roblox for a launch ticket with the saved session, then starts 
 
 **Things to know**
 - **A saved session is as powerful as your password.** Anyone who can run programs as your Windows user could use it. Don't use this on a PC you share. Logging out of an account on roblox.com, or changing its password, ends the saved session and you add it again.
-- **Running several Roblox clients at once** needs Roblox's single-instance check to be lifted, which this manager does not do. Use whatever you already use for that. The manager only starts the clients. If Roblox refuses a second client, the manager says so instead of failing silently.
+- **Running several Roblox clients at once.** Roblox clients share a named event, `ROBLOX_singletonEvent`; when a new client starts, the one already running hears it and leaves its game. Before each launch the manager closes that one handle inside the running Roblox clients (the same as "Close Handle" in Process Explorer), so they stay open side by side. It injects nothing and reads or writes no game memory, but it does reach into Roblox's own processes, which Roblox may not like. Using it is your responsibility.
 - **Back up settings… / Restore…** (Settings → Accounts) saves and loads names, card order, ignored accounts and window positions. Logins are never included in a backup.
 - Roblox's rules decide whether multiple accounts and AFK farming are allowed for the game you play. Using this tool doesn't make anything permitted. Treat it as your responsibility and read the [Terms of Use](https://en.help.roblox.com/hc/en-us/articles/115004647846).
 - It sends only what the website itself would: a plain, honest `User-Agent` naming this tool, no disguise as a browser or the Roblox client, and no clicking or typing into Roblox's pages.
@@ -217,7 +219,7 @@ The server only listens on your own PC (`127.0.0.1`), and Tailscale Serve keeps 
 - ❌ Ask for, read or store your **password**. You type it into Roblox's own page.
 - ❌ Read any cookie unless you add a saved login yourself.
 - ❌ Inject code, read or write game memory, or automate gameplay.
-- ❌ Bypass protections or stop Roblox's idle disconnect.
+- ❌ Inject code, or stop Roblox's idle disconnect. (It does close one shared event handle in running clients so several can stay open; see Things to know.)
 - ❌ Upload your logs, record video, or send data anywhere except Roblox's public APIs, your phone (if you turn monitoring on) and your own Discord channel (if you set up Discord alerts).
 - ❌ Close or restart your games on its own, unless you turned on the restart option.
 

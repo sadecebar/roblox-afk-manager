@@ -97,12 +97,16 @@ public sealed class AccountLauncher : IAccountLauncher, IDisposable
     public async Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null)
     {
         var before = RobloxProcessIds();
+        // Running clients must not hear the new client's start signal, so close their singleton event first.
+        if (before.Length > 0) RobloxSingleton.Release();
         await LaunchAsync(cookie, placeId, token, readyTicket);
         var deadline = DateTime.UtcNow.AddSeconds(60);
         int[] fresh = [];
         while (DateTime.UtcNow < deadline && fresh.Length == 0)
-        { await Task.Delay(500, token); fresh = RobloxProcessIds().Except(before).ToArray(); }
-        const string Blocked = "Roblox didn't open a new window. While other clients run, Roblox only allows one unless something lifts its single-instance limit (see README: Opening accounts).";
+        { await Task.Delay(300, token); fresh = RobloxProcessIds().Except(before).ToArray(); }
+        // The new client creates its own event a moment after it starts; close it too so the next launch is quiet.
+        for (int i = 0; i < 20 && fresh.Length > 0; i++) { if (RobloxSingleton.Release() > 0) break; await Task.Delay(250, token); }
+        const string Blocked = "Roblox didn't open a new window. A Roblox client that was already running before the manager started holds the single-instance lock. Close all Roblox windows, then open the accounts from the manager.";
         if (fresh.Length == 0) throw new InvalidOperationException(before.Length > 0 ? Blocked : "Roblox didn't start within a minute.");
         if (before.Length > 0)
         {
