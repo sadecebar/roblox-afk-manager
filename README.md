@@ -136,6 +136,7 @@ Everything above works without this. It only matters if you want the manager to 
 
 **What it does**
 - **Open closed** (and a per-account **Open**) starts Roblox for every saved account that isn't running, one every 10 seconds, in the game you choose.
+- **Open selected** starts only the accounts you tick. **Seconds between accounts** (5 to 120, default 10) sets the gap between launches.
 - **Game to open:** paste a `roblox.com/games/…` link or a place id in the Offline panel. Nothing is opened until you set one.
 - **Arrange** puts the windows on a grid on the monitor you pick, and can maximize one main client. **Save positions** remembers each window's spot, and they return there when the accounts are reopened.
 - **Restart an account when Roblox ends its login** (off by default). When a client's log shows a burst of "401 Unauthorized" answers, its login was ended and it will freeze and get kicked. The manager then closes and reopens just that account. At most 4 restarts an hour overall, and one per account every 20 minutes. Every restart is listed in **Activity**.
@@ -151,7 +152,8 @@ The manager asks Roblox for a launch ticket with the saved session, then starts 
 
 **Things to know**
 - **A saved session is as powerful as your password.** Anyone who can run programs as your Windows user could use it. Don't use this on a PC you share. Logging out of an account on roblox.com, or changing its password, ends the saved session and you add it again.
-- **Running several Roblox clients at once** needs Roblox's single-instance check to be lifted, which this manager does not do. Use whatever you already use for that. The manager only starts the clients.
+- **Running several Roblox clients at once** needs Roblox's single-instance check to be lifted, which this manager does not do. Use whatever you already use for that. The manager only starts the clients. If Roblox refuses a second client, the manager says so instead of failing silently.
+- **Back up settings… / Restore…** (Offline panel) saves and loads names, card order, ignored accounts and window positions. Logins are never included in a backup.
 - Roblox's rules decide whether multiple accounts and AFK farming are allowed for the game you play. Using this tool doesn't make anything permitted. Treat it as your responsibility and read the [Terms of Use](https://en.help.roblox.com/hc/en-us/articles/115004647846).
 - It sends only what the website itself would: a plain, honest `User-Agent` naming this tool, no disguise as a browser or the Roblox client, and no clicking or typing into Roblox's pages.
 - An account that Roblox's own app or a browser also has logged in can be signed out by that. If an account keeps losing its login, turn on the restart option, or log in again with **Login**.

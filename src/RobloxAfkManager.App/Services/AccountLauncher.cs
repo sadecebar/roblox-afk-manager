@@ -74,15 +74,22 @@ public sealed class LoginVault(string? path = null)
     internal static byte[] Unprotect(byte[] data) => Transform(data, false);
 }
 
+public interface IAccountLauncher
+{
+    Task<SavedLogin> IdentifyAsync(string cookie, CancellationToken token);
+    Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token);
+    Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null);
+}
+
 // Starts Roblox as a specific account using Roblox's own one-time authentication ticket flow.
-public sealed class AccountLauncher : IDisposable
+public sealed class AccountLauncher : IAccountLauncher, IDisposable
 {
     private static readonly HttpClient Http = CreateHttp();
     // Identifies itself plainly as this tool: no browser or Roblox-client disguise.
     private static HttpClient CreateHttp()
     {
         var client = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(15) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("RobloxAfkManager/0.10 (open-source account manager)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("RobloxAfkManager/0.11 (open-source account manager)");
         return client;
     }
 
@@ -95,7 +102,14 @@ public sealed class AccountLauncher : IDisposable
         int[] fresh = [];
         while (DateTime.UtcNow < deadline && fresh.Length == 0)
         { await Task.Delay(500, token); fresh = RobloxProcessIds().Except(before).ToArray(); }
-        if (fresh.Length == 0) throw new InvalidOperationException("Roblox didn't start within a minute.");
+        const string Blocked = "Roblox didn't open a new window. While other clients run, Roblox only allows one unless something lifts its single-instance limit (see README: Opening accounts).";
+        if (fresh.Length == 0) throw new InvalidOperationException(before.Length > 0 ? Blocked : "Roblox didn't start within a minute.");
+        if (before.Length > 0)
+        {
+            // A second client that Roblox rejects starts and exits again within seconds.
+            await Task.Delay(8000, token);
+            if (!RobloxProcessIds().Contains(fresh[0])) throw new InvalidOperationException(Blocked);
+        }
         return fresh[0];
     }
 

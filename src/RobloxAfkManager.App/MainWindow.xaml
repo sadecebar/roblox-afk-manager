@@ -311,24 +311,35 @@
           <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
           <TextBlock Text="Saved logins" Style="{StaticResource PopupTitle}" />
           <ItemsControl ItemsSource="{Binding SavedLogins}" Margin="0,8,0,0"><ItemsControl.ItemTemplate><DataTemplate>
-            <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-              <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-              <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="8,0" />
-              <Button Grid.Column="2" Content="Open" Command="{Binding DataContext.OpenLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource CompactButton}" MinHeight="26" Padding="10,2" Margin="0,0,4,0" AutomationProperties.Name="{Binding Name, StringFormat=Open {0}}" />
-              <Button Grid.Column="3" Content="Login" Click="LoginRow_Click" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" Margin="0,0,4,0" ToolTip="Open this account's own browser profile. If its session expired, log in once; otherwise this just refreshes the saved login." AutomationProperties.Name="{Binding Name, StringFormat=Log in again as {0}}" />
-              <Button Grid.Column="4" Content="Remove" Command="{Binding DataContext.RemoveLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" AutomationProperties.Name="{Binding Name, StringFormat=Remove saved login {0}}" />
+            <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <CheckBox IsChecked="{Binding Selected}" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Include in Open selected" AutomationProperties.Name="{Binding Name, StringFormat=Select {0}}" />
+              <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="2" Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="8,0" />
+              <Button Grid.Column="3" Content="Open" Command="{Binding DataContext.OpenLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource CompactButton}" MinHeight="26" Padding="10,2" Margin="0,0,4,0" AutomationProperties.Name="{Binding Name, StringFormat=Open {0}}" />
+              <Button Grid.Column="4" Content="Login" Click="LoginRow_Click" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" Margin="0,0,4,0" ToolTip="Open this account's own browser profile. If its session expired, log in once; otherwise this just refreshes the saved login." AutomationProperties.Name="{Binding Name, StringFormat=Log in again as {0}}" />
+              <Button Grid.Column="5" Content="Remove" Command="{Binding DataContext.RemoveLoginCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Style="{StaticResource ToolbarButton}" MinHeight="26" Padding="8,2" AutomationProperties.Name="{Binding Name, StringFormat=Remove saved login {0}}" />
             </Grid>
           </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
           <TextBlock Text="Game to open (roblox.com/games/… link or place id)" Foreground="{StaticResource SubtleBrush}" FontSize="11" Margin="0,8,0,4" />
           <TextBox Text="{Binding GameLink, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Game link or place id" />
           <CheckBox Content="Restart an account when Roblox ends its login" IsChecked="{Binding AutoRecover}" Margin="0,8,0,0" ToolTip="When a client's login is ended (it freezes, then gets kicked), the manager restarts just that account from its saved login. At most once per 20 minutes per account." />
-          <Button Content="{Binding OpenClosedLabel}" Command="{Binding OpenClosedCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,8,0,0" ToolTip="Starts the game below for every saved account that isn't running, about 10 seconds apart." />
+          <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="56" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock Text="Seconds between accounts" Foreground="{StaticResource SubtleBrush}" FontSize="11" VerticalAlignment="Center" />
+            <TextBox Grid.Column="2" Text="{Binding LaunchSpacingSeconds, UpdateSourceTrigger=LostFocus}" ToolTip="5 to 120. Roblox slows launches down if too many start at once." AutomationProperties.Name="Seconds between accounts" />
+          </Grid>
+          <Button Content="{Binding OpenSelectedLabel}" Command="{Binding OpenSelectedCommand}" Style="{StaticResource CompactButton}" Margin="0,8,0,0" ToolTip="Starts only the accounts you ticked above." />
+          <Button Content="{Binding OpenClosedLabel}" Command="{Binding OpenClosedCommand}" Style="{StaticResource CompactPrimaryButton}" Margin="0,6,0,0" ToolTip="Starts the game below for every saved account that isn't running." />
           <Button Content="Log in to add an account…" Click="LoginNew_Click" Style="{StaticResource CompactButton}" Margin="0,8,0,0" ToolTip="Opens Roblox's login page. Log in once and the account is saved; no cookie copying." />
-          <TextBlock Text="Or add one by pasting its .ROBLOSECURITY cookie. It is stored encrypted for this Windows user and only sent to roblox.com." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,6" />
+          <TextBlock Text="A saved login gives full access to the account: don't use this on a shared PC. Or add one by pasting its .ROBLOSECURITY cookie. It is stored encrypted for this Windows user and only sent to roblox.com." Foreground="{StaticResource SubtleBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,6" />
           <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
             <PasswordBox x:Name="CookieBox" AutomationProperties.Name="Session cookie" />
             <Button Grid.Column="1" Content="Add" Click="AddLogin_Click" Style="{StaticResource CompactButton}" Margin="8,0,0,0" />
           </Grid>
+          <Border Style="{StaticResource Divider}" Margin="0,12,0,10" />
+          <StackPanel Orientation="Horizontal">
+            <Button Content="Back up settings…" Click="Backup_Click" Style="{StaticResource CompactButton}" ToolTip="Saves names, order, ignored accounts and window positions to a file. Logins are not included." />
+            <Button Content="Restore…" Click="Restore_Click" Style="{StaticResource CompactButton}" Margin="6,0,0,0" ToolTip="Loads a settings backup made with Back up settings." />
+          </StackPanel>
         </StackPanel>
       </Border>
     </Popup>

@@ -6,6 +6,13 @@ namespace RobloxAfkManager.Tests;
 
 internal static class Program
 {
+    private sealed class RecordingLauncher : RobloxAfkManager.App.Services.IAccountLauncher
+    {
+        public readonly List<(string Cookie, long Place)> Launched = [];
+        public Task<RobloxAfkManager.App.Services.SavedLogin> IdentifyAsync(string cookie, CancellationToken token) => Task.FromResult(new RobloxAfkManager.App.Services.SavedLogin(1, "x"));
+        public Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token) => Task.FromResult("ticket");
+        public Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null) { lock (Launched) Launched.Add((cookie, placeId)); return Task.FromResult(4242); }
+    }
     private sealed class FixedAccountLookup(long userId) : IAccountDetailsLookup
     {
         public Task<IReadOnlyDictionary<ProcessIdentity, string>> ResolveAsync(IReadOnlyList<ProcessIdentity> processes, CancellationToken cancellationToken) =>
@@ -105,6 +112,53 @@ internal static class Program
             var id = fake.Detect()[0].Identity;
             for (int i = 0; i < 40 && fake.Bounds[id] != place.Bounds; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(100); }
             Check(fake.Bounds[id] == place.Bounds);
+        });
+        Test("Open selected starts only ticked accounts; game and spacing persist in the chosen folder", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-open-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat"));
+                vault.Save(1, "alpha", new string('a', 120)); vault.Save(2, "bravo", new string('b', 120));
+                var launcher = new RecordingLauncher();
+                using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root);
+                Check(vm.OpenSelectedCommand.CanExecute(null) == false && vm.OpenSelectedLabel == "Open selected");
+                vm.GameLink = "https://www.roblox.com/games/1818/Anything";
+                vm.LaunchSpacingSeconds = 1; // below the minimum
+                Check(vm.LaunchSpacingSeconds == 5 && File.ReadAllText(Path.Combine(root, "spacing.txt")) == "5" && File.ReadAllText(Path.Combine(root, "game.txt")) == "1818");
+                vm.SavedLogins.Single(l => l.Name == "bravo").Selected = true;
+                Check(vm.SelectedCount == 1 && vm.OpenSelectedLabel == "Open 1 selected" && vm.OpenSelectedCommand.CanExecute(null));
+                vm.OpenSelectedCommand.Execute(null);
+                for (int i = 0; i < 100 && launcher.Launched.Count == 0; i++) Thread.Sleep(50);
+                Thread.Sleep(200);
+                Check(launcher.Launched.Count == 1 && launcher.Launched[0].Cookie[0] == 'b' && launcher.Launched[0].Place == 1818);
+                using var again = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root);
+                Check(again.GamePlaceId == 1818 && again.LaunchSpacingSeconds == 5); // remembered
+                again.GameLink = ""; // no game: nothing can be opened
+                Check(!again.OpenClosedCommand.CanExecute(null) && again.OpenClosedLabel == "Set a game first");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Settings backups round-trip profiles, never contain logins, and refuse non-backup files", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-bak-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var store = new MemoryWorkspaceStore(); store.Write(new([new AccountProfile(77, "My alt", 0, false, null, Window: new SavedPlacement(new(10, 20, 600, 400), false))], []));
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "secretname", new string('c', 150));
+                string file = Path.Combine(root, "backup.json");
+                using (var first = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: store, accountLauncher: new RecordingLauncher(), loginVault: vault, settingsFolder: root))
+                    first.BackupSettings(file);
+                Check(File.ReadAllText(file).Contains("My alt") && !File.ReadAllText(file).Contains(new string('c', 20)));
+                using var second = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(), loginVault: new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "none.dat")), settingsFolder: root);
+                Check(second.SavedProfileCount == 0);
+                second.RestoreSettings(file);
+                Check(second.SavedProfileCount == 1 && !second.Warning);
+                File.WriteAllText(Path.Combine(root, "junk.json"), "this is not json");
+                second.RestoreSettings(Path.Combine(root, "junk.json"));
+                Check(second.Warning && second.SavedProfileCount == 1); // untouched
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });
         Test("Odd dimensions distribute remainders and preserve gaps", () =>
         {

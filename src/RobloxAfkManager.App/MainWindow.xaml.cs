@@ -62,6 +62,16 @@ public partial class MainWindow : Window
         }
         else if (window.IsNewProfile) await LoginWindow.DiscardAsync(window.FolderPath); // closed without logging in
     }
+    private void Backup_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Back up manager settings", FileName = "RobloxAfkManager-settings.json", Filter = "Settings backup (*.json)|*.json" };
+        if (dialog.ShowDialog(this) == true) viewModel.BackupSettings(dialog.FileName);
+    }
+    private void Restore_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Restore manager settings", Filter = "Settings backup (*.json)|*.json" };
+        if (dialog.ShowDialog(this) == true) viewModel.RestoreSettings(dialog.FileName);
+    }
     private async void AddLogin_Click(object sender, RoutedEventArgs e)
     {
         string cookie = CookieBox.Password; CookieBox.Clear();

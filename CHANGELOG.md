@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0: Open selected, spacing, backups
+
+### New
+- **Open selected.** Tick accounts in the saved logins list and start just those.
+- **Seconds between accounts.** The gap between launches is now a setting (5 to 120 seconds, default 10).
+- **Clear message when Roblox refuses a second client.** Instead of a silent failure or "didn't start", the manager explains the single-instance limit.
+- **Back up / Restore settings.** Names, order, ignored accounts and saved window positions. Logins are never in a backup.
+- A reminder next to the cookie box that a saved login gives full access to the account.
+
 ## v0.10.0: Open accounts, arrange windows
 
 Optional, and off until you save a login. Nothing here stores a password.
