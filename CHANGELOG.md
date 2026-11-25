@@ -1,24 +1,38 @@
 # Changelog
 
-## v0.11.0: Open selected, spacing, backups
+## v0.11.0: Discord alerts, live status board, Settings page
 
-### New
-- **Smoother, clearer look.** Buttons squish slightly when pressed and glow on hover, switches slide, panels and settings tabs fade and slide in (all skipped when Windows animations are turned off). Buttons and tabs now carry matching icons.
-- **Status indicators in the header.** **Alerts** and **Rejoin** chips show **on**, **standby** or **off** with a colored dot (green and gently pulsing = active now, amber = switched on but waiting for you to be away, grey = off). Click Rejoin to switch it on or off, click Alerts to open the alert settings.
-- **Settings page.** One **Settings** button with five tabs (Accounts, Alerts, Layout, Plans, Phone). The Arrange, Plans and Mobile header buttons moved into it; Activity, Offline and Ignored stay in the header because they show live badges.
-- **Discord alerts.** Optional webhook that messages a channel when an account disconnects or is kicked, its game or window closes, it freezes, or it loses its login. Batched, pings only you, stored encrypted. See the README.
-- **Separate channels.** The live status board can have its own webhook and channel. Alerts, pings, "back" edits and the started/closed notes stay in the alerts (log) channel.
-- **Live status board.** Optional: one Discord message lists every account and its state and is edited in place when something changes (at most every 10 seconds), instead of new messages. Marked "manager closed" when the manager stops.
-- **Alerts update themselves.** When an account comes back, the bot edits its original Discord alert (green line, "back at 03:41") instead of posting again, and nobody is pinged twice.
-- **Away mode.** Alerts are sent only while you're away from the PC (automatic after 2 minutes without keyboard or mouse, or forced either way). A header chip shows At PC / Away. Closing a client yourself at the PC never pings you.
-- **Sleep mode.** Click the chip to count as away even while you use the PC. Click again to go back to automatic.
-- **Reopen crashed accounts when away** (off by default). An account whose window closes, or that is kicked and left on the error screen, is started again from its saved login. Waits 25 seconds, one account at a time, at most 3 times an hour per account and 24 an hour in total. Never acts while you're at the PC.
-- Password boxes now follow the dark theme.
-- **Open selected.** Tick accounts in the saved logins list and start just those.
-- **Seconds between accounts.** The gap between launches is now a setting (5 to 120 seconds, default 10).
-- **Clear message when Roblox refuses a second client.** Instead of a silent failure or "didn't start", the manager explains the single-instance limit.
-- **Back up / Restore settings.** Names, order, ignored accounts and saved window positions. Logins are never in a backup.
-- A reminder next to the cookie box that a saved login gives full access to the account.
+Released 2026-11-25. Everything new is optional and off until you set it up. Nothing stores or asks for your password.
+
+### Discord alerts (Settings → Alerts)
+- **Alerts to your phone.** Add a channel webhook and the manager messages Discord when an account disconnects or is kicked, its game or window closes, it freezes, or Roblox ends its login. Add your Discord user ID to get a real ping.
+- **Only when you're away.** A header chip shows **At PC**, **Away** or **Sleep**. You count as away after 2 minutes without keyboard or mouse (changeable). Closing a client yourself at the PC never pings you. **Sleep mode** counts you as away even while you use the PC.
+- **No spam.** Events that arrive together are one message, and when an account comes back the bot **edits the original alert** (green line, "back at 03:41") instead of posting again. Capped at 30 messages an hour.
+- **Live status board.** One message lists every account (joined, joining, closed, disconnected, not running) and is edited in place when something changes. It can have **its own channel**, apart from the alerts and log channel. When the manager closes, the board is marked "manager closed".
+- The webhook address is stored encrypted for your Windows user, sent only to Discord, never logged. Messages can only mention you.
+
+### Automatic rejoin (off by default)
+- **Reopen crashed or kicked accounts while you're away.** A closed window, or a client kicked and left on the error screen, is started again from its saved login. It waits 25 seconds, handles one account at a time, and reopens each account at most 3 times an hour (24 in total). It never acts while you're at the PC.
+- **Open selected** accounts, and **Seconds between accounts** (5 to 120) for launches.
+- A clear message when Roblox refuses a second client, instead of a silent failure.
+
+### Interface
+- **Settings page** with five tabs (Accounts, Alerts, Layout, Plans, Phone). Arrange, Plans and Mobile moved into it. Activity, Offline and Ignored stay in the header.
+- **Alerts** and **Rejoin** chips in the header show **on**, **standby** or **off** with a colored dot.
+- Buttons and tabs have matching icons. Buttons squish when pressed, switches slide, panels fade and slide in. All animation is skipped when Windows animations are off.
+- **Back up / Restore settings** (names, order, ignored accounts, window positions; never logins).
+- Dark password boxes, refreshed screenshots.
+
+### Security and privacy
+- The in-app login window now only allows Roblox's own https pages; links, redirects and pop-ups to anything else are blocked.
+- Discord webhook addresses must be real `discord.com` webhook addresses; redirects are not followed.
+- Automated tests can no longer touch a real settings folder, saved logins or webhook (they use a temporary folder).
+- No known vulnerable packages. See [SECURITY.md](SECURITY.md) to report a problem.
+
+### Good to know
+- A saved login is as powerful as your password. Don't use this on a shared PC.
+- Running several Roblox clients at once still needs Roblox's single-instance limit lifted by a tool you choose. The manager only starts the clients.
+- If the PC loses power, no alert can be sent, so silence is not proof that everything is fine.
 
 ## v0.10.0: Open accounts, arrange windows
 

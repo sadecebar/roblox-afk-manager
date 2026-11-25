@@ -18,6 +18,12 @@ public sealed class LoginWindow : Window
     public static string BrowserRoot => Path.Combine(AppFolders.Data, "browser");
     public static string ProfileFolder(long userId) => Path.Combine(BrowserRoot, userId.ToString());
 
+    // The login window is for Roblox's own pages only. A link, redirect or pop-up that tries to open anything else is
+    // refused, so a look-alike page can never appear inside a window that has just asked for a password.
+    public static bool IsAllowedAddress(string? address) =>
+        Uri.TryCreate(address, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.AbsoluteUri == "about:blank")
+        && (uri.AbsoluteUri == "about:blank" || uri.Host == "roblox.com" || uri.Host.EndsWith(".roblox.com", StringComparison.OrdinalIgnoreCase));
+
     private readonly WebView2 web = new();
     private readonly TextBlock status = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xC9, 0xCD, 0xD6)), Margin = new Thickness(14, 10, 14, 10), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly AccountLauncher launcher = new();
@@ -60,6 +66,16 @@ public sealed class LoginWindow : Window
         {
             Directory.CreateDirectory(BrowserRoot);
             await web.EnsureCoreWebView2Async();
+            web.CoreWebView2.NavigationStarting += (_, e) =>
+            {
+                if (IsAllowedAddress(e.Uri)) return;
+                e.Cancel = true; status.Text = "Only Roblox's own pages can be opened in this window.";
+            };
+            web.CoreWebView2.NewWindowRequested += (_, e) =>
+            {
+                e.Handled = true; // never open extra windows; stay on a Roblox page in this one
+                if (IsAllowedAddress(e.Uri)) web.CoreWebView2.Navigate(e.Uri);
+            };
             web.NavigationCompleted += async (_, _) => await CheckAsync();
             web.CoreWebView2.Navigate("https://www.roblox.com/login");
             poll.Start();

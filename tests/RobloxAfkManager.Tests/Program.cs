@@ -557,6 +557,13 @@ internal static class Program
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });
+        Test("The login window only allows Roblox's own https pages", () =>
+        {
+            Check(RobloxAfkManager.App.LoginWindow.IsAllowedAddress("https://www.roblox.com/login") && RobloxAfkManager.App.LoginWindow.IsAllowedAddress("https://roblox.com/") && RobloxAfkManager.App.LoginWindow.IsAllowedAddress("https://auth.roblox.com/v2/login"));
+            Check(!RobloxAfkManager.App.LoginWindow.IsAllowedAddress("http://www.roblox.com/login"));
+            Check(!RobloxAfkManager.App.LoginWindow.IsAllowedAddress("https://www.roblox.com.evil.example/login") && !RobloxAfkManager.App.LoginWindow.IsAllowedAddress("https://evilroblox.com/") && !RobloxAfkManager.App.LoginWindow.IsAllowedAddress("https://example.com/?u=www.roblox.com"));
+            Check(!RobloxAfkManager.App.LoginWindow.IsAllowedAddress("javascript:alert(1)") && !RobloxAfkManager.App.LoginWindow.IsAllowedAddress("file:///c:/windows/system.ini") && !RobloxAfkManager.App.LoginWindow.IsAllowedAddress(null) && !RobloxAfkManager.App.LoginWindow.IsAllowedAddress("not a url"));
+        });
         Test("Odd dimensions distribute remainders and preserve gaps", () =>
         {
             var cells = GridPlanner.Plan(new(15, -1080, 1919, 1039), new(4, 3, 7), Enumerable.Repeat(new WindowLimits(1, 1), 12).ToArray());
