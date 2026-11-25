@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.12.0: Several clients at once, disconnect detection and restart, incident log
+
+Released 2026-11-25. Reopening a disconnected account and pinging only for real problems both work now. Auto-reopen is still off until you switch it on.
 
 ### Several clients at once
 - **Opening many accounts now works.** Starting a second Roblox client made the first one leave its game, because clients share a named event (`ROBLOX_singletonEvent`). Before each launch the manager now closes that one handle in the running clients, so all of them stay open. See the README for what this does and does not touch.
