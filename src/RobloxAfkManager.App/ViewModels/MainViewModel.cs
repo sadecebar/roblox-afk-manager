@@ -60,7 +60,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public MainViewModel(IWindowSystem? windowSystem = null, IAppLog? appLog = null, IProcessResourceSystem? resourceSystem = null, IWorkingSetSystem? workingSetSystem = null,
         IAccountNameLookup? accountNameLookup = null, IClientNameStore? clientNameStore = null, IWorkspaceStore? workspaceStore = null,
-        IAccountLauncher? accountLauncher = null, LoginVault? loginVault = null, string? settingsFolder = null)
+        IAccountLauncher? accountLauncher = null, LoginVault? loginVault = null, string? settingsFolder = null, DiscordWebhook? discordWebhook = null)
     {
         log = appLog ?? new FileLog(); windows = windowSystem ?? new Win32WindowSystem(log); manager = new(windows, log);
         accountNames = accountNameLookup ?? (windows is Win32WindowSystem ? new LogAccountNameLookup() : null);
@@ -68,7 +68,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Remote = new(windows.IsCurrent, log);
         resources = new(resourceSystem ?? new Win32ProcessResources(), log);
         memoryCaps = new(workingSetSystem ?? new Win32ProcessResources(), log);
-        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster(); InitializeLaunch(accountLauncher, loginVault, settingsFolder); InitializePlacements();
+        InitializeWorkspace(workspaceStore ?? (windows is Win32WindowSystem ? new WorkspaceStore() : new MemoryWorkspaceStore())); InitializeRoster(); InitializeLaunch(accountLauncher, loginVault, settingsFolder); InitializeDiscord(discordWebhook); InitializePlacements();
         selectedLayout = Layouts[1];
         DetectCommand = new(() => RefreshAsync(true), () => !Busy, HandleError);
         ArrangeCommand = new(ArrangeAsync, () => !Busy && IncludedCount > 0 && SelectedMonitor is not null, HandleError);
@@ -433,8 +433,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (disposed) return;
+        AnnounceClosing();
         try { TrackRoster(forceSave: true); } catch (Exception ex) { log.Write("Account roster could not be saved on close.", ex); }
-        disposed = true; monitor?.Dispose(); (launcher as IDisposable)?.Dispose();
+        disposed = true; monitor?.Dispose(); (launcher as IDisposable)?.Dispose(); webhook.Dispose();
         nameCancellation.Cancel();
         if (!resolvingNames) nameCancellation.Dispose();
         Remote.Dispose();

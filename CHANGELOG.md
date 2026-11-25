@@ -3,6 +3,7 @@
 ## v0.11.0: Open selected, spacing, backups
 
 ### New
+- **Discord alerts.** Optional webhook that messages a channel when an account disconnects or is kicked, its game or window closes, it freezes, or it loses its login. Batched, pings only you, stored encrypted. See the README.
 - **Open selected.** Tick accounts in the saved logins list and start just those.
 - **Seconds between accounts.** The gap between launches is now a setting (5 to 120 seconds, default 10).
 - **Clear message when Roblox refuses a second client.** Instead of a silent failure or "didn't start", the manager explains the single-instance limit.

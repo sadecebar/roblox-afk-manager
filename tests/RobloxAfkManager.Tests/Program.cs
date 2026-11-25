@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.IO;
 using RobloxAfkManager.Core;
 using RobloxAfkManager.App.ViewModels;
@@ -12,6 +13,18 @@ internal static class Program
         public Task<RobloxAfkManager.App.Services.SavedLogin> IdentifyAsync(string cookie, CancellationToken token) => Task.FromResult(new RobloxAfkManager.App.Services.SavedLogin(1, "x"));
         public Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token) => Task.FromResult("ticket");
         public Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null) { lock (Launched) Launched.Add((cookie, placeId)); return Task.FromResult(4242); }
+    }
+    private sealed class FakeDiscord : HttpMessageHandler
+    {
+        public readonly List<(string Url, string Body)> Requests = [];
+        public readonly Queue<(System.Net.HttpStatusCode Code, string Body)> Replies = new();
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            string body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
+            lock (Requests) Requests.Add((request.RequestUri!.ToString(), body));
+            var (code, reply) = Replies.Count > 0 ? Replies.Dequeue() : (System.Net.HttpStatusCode.NoContent, "");
+            return new HttpResponseMessage(code) { Content = new StringContent(reply) };
+        }
     }
     private sealed class FixedAccountLookup(long userId) : IAccountDetailsLookup
     {
@@ -157,6 +170,80 @@ internal static class Program
                 File.WriteAllText(Path.Combine(root, "junk.json"), "this is not json");
                 second.RestoreSettings(Path.Combine(root, "junk.json"));
                 Check(second.Warning && second.SavedProfileCount == 1); // untouched
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Discord webhook: only real Discord webhook addresses are accepted, stored encrypted, never in plain text", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-hook-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                string good = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH_-0123";
+                Check(RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl(good) && RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl(good.Replace("discord.com", "ptb.discord.com")));
+                Check(!RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl("https://evil.example/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz")
+                    && !RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl("http://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz")
+                    && !RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl("https://discord.com.evil.example/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz"));
+                using (var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()))
+                {
+                    Check(!hook.Configured);
+                    bool refused = false; try { hook.Save("https://example.com/x", null); } catch (ArgumentException) { refused = true; }
+                    Check(refused && !File.Exists(Path.Combine(root, "webhook.dat")));
+                    hook.Save(good, "111222333444555666");
+                }
+                string onDisk = File.ReadAllText(Path.Combine(root, "webhook.dat"));
+                Check(!onDisk.Contains("abcdefghijkl") && !onDisk.Contains("discord.com"));
+                using var again = new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord());
+                Check(again.Configured && again.UserId == "111222333444555666");
+                again.Clear();
+                Check(!again.Configured && !File.Exists(Path.Combine(root, "webhook.dat")));
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Discord alerts arrive as one batched message, ping only for problems, and cannot mention anyone else", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-hook-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var fake = new FakeDiscord();
+                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(150));
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "ignored", "not sent: nothing saved yet", true), true);
+                Thread.Sleep(400); Check(fake.Requests.Count == 0);
+                hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", "111222333444555666");
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "@everyone alt1", "Roblox's log reports a disconnect.", true), true);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt2", "Window closed or is no longer detected.", true), true);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt3", "A new game join was reported by Roblox.", false), false);
+                for (int i = 0; i < 40 && fake.Requests.Count == 0; i++) Thread.Sleep(50);
+                Thread.Sleep(300);
+                Check(fake.Requests.Count == 1); // three events, one message
+                using var doc = System.Text.Json.JsonDocument.Parse(fake.Requests[0].Body);
+                Check(doc.RootElement.GetProperty("content").GetString() == "<@111222333444555666>");
+                var mentions = doc.RootElement.GetProperty("allowed_mentions");
+                Check(mentions.GetProperty("parse").GetArrayLength() == 0 && mentions.GetProperty("users").GetArrayLength() == 1);
+                string text = doc.RootElement.GetProperty("embeds")[0].GetProperty("description").GetString()!;
+                Check(text.Contains("alt1") && text.Contains("alt2") && text.Contains("alt3") && text.Contains("disconnect"));
+                Check(doc.RootElement.GetProperty("embeds")[0].GetProperty("title").GetString() == "2 accounts need attention");
+                // An update with no problem does not ping.
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt3", "Back.", false), false);
+                for (int i = 0; i < 40 && fake.Requests.Count < 2; i++) Thread.Sleep(50);
+                Thread.Sleep(200);
+                using var calm = System.Text.Json.JsonDocument.Parse(fake.Requests[1].Body);
+                Check(calm.RootElement.GetProperty("content").ValueKind == System.Text.Json.JsonValueKind.Null && calm.RootElement.GetProperty("allowed_mentions").GetProperty("users").GetArrayLength() == 0);
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Discord failures give plain messages: removed webhook, rate limit retry", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-hook-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var fake = new FakeDiscord();
+                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50));
+                hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", null);
+                fake.Replies.Enqueue((System.Net.HttpStatusCode.TooManyRequests, "{\"retry_after\": 0.5}"));
+                Check(hook.TestAsync().GetAwaiter().GetResult() == "Last alert sent." && fake.Requests.Count == 2); // retried once, then delivered
+                fake.Replies.Enqueue((System.Net.HttpStatusCode.NotFound, ""));
+                string result = hook.TestAsync().GetAwaiter().GetResult();
+                Check(result.Contains("no longer exists") && !result.Contains("discord.com") && !result.Contains("abcdefghijkl"));
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });

@@ -21,6 +21,7 @@ public sealed partial class MainViewModel
         var entry = new ActivityEntry(DateTimeOffset.UtcNow, label, message, warning);
         Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);
         if (warning) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
+        Announce(entry, warning);
         RaiseUnread(); Raise(nameof(HasActivity)); SaveWorkspace();
     }
 

@@ -146,6 +146,7 @@ public sealed partial class MainViewModel
         {
             Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);
             if (entry.Warning) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
+            Announce(entry, entry.Warning);
         }
         if (events.Count > 0) { RaiseUnread(); Raise(nameof(HasActivity)); SaveWorkspace(); }
     }

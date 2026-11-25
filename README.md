@@ -72,6 +72,22 @@ It **watches and organizes**. It never plays for you, never asks for or stores y
 ### 🚀 Opening accounts (optional)
 Save a login session once, then reopen every closed account with one button, line the windows up on a grid, and have each one return to its saved position. See [Opening accounts](#-opening-accounts-optional).
 
+### 🔔 Discord alerts (optional)
+Away from your PC? The manager can message a Discord channel when something goes wrong, naming the account:
+
+- an account's **log reports a disconnect**, including being kicked while the game keeps running
+- a game **window closed** or is no longer detected (crash, or you closed it)
+- a client is **not responding** or **stuck joining**
+- Roblox **ended an account's login** (and whether the automatic restart worked)
+- an account **came back** after one of the above
+
+Open **Activity → Discord alerts**, paste a channel webhook address (channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL), and press **Test**. Add your Discord user ID if you want your phone to buzz: Discord only notifies you if you are mentioned, so without it messages arrive silently in the channel.
+
+- Several events close together are sent as **one message**, so twelve accounts dropping at once is one ping, not twelve. At most 30 messages an hour.
+- The webhook address is a secret. It is stored **encrypted for your Windows user**, sent only to Discord, and never logged. **Turn off** deletes it. If it ever leaks, delete the webhook in Discord.
+- Messages contain account names (as shown on the cards), a short description and a time. Nothing else leaves your PC. Alerts can only mention you: nobody else, and never `@everyone`.
+- The manager also posts when it **starts** and when it is **closed normally**. If the whole PC loses power or the manager is killed, nothing can be sent, so silence is not proof that everything is fine.
+
 ### 📱 Phone monitoring
 A private, read-only page for your phone: account names, game, session state, RAM and a screenshot of each client, refreshed about every 8 seconds. Tap a card to enlarge it. See [Phone monitoring](#-phone-monitoring).
 
@@ -111,7 +127,7 @@ Start with two clients to get a feel for it before scaling up.
 | **Restore windows** | Restores clients that were minimized outside the manager. |
 | **Offline** | Accounts that ran recently but are closed now. Copy a name, or **Forget** one you closed on purpose. Also where saved logins, the game to open and **Open closed** live. |
 | **Arrange** | Puts the game windows on a grid on the monitor you choose. Optionally maximizes one main client. **Save positions** remembers where each window sits. |
-| **Activity** | Recent events, desktop notification toggle, Clear. |
+| **Activity** | Recent events, desktop notification toggle, Clear, and **Discord alerts**. |
 | **Plans** | Resource plans and the RAM limit. |
 | **Mobile** | Starts or stops phone monitoring and shows the access code. |
 | **Ignored** | Lists ignored clients, restores original window placements. |
@@ -135,6 +151,7 @@ If the app is force-killed, it can't restore settings. They stay applied until e
 Everything above works without this. It only matters if you want the manager to reopen accounts that closed. Without it, the **Offline** panel still tells you which account to open by hand.
 
 **What it does**
+- Sends short alert messages (account name, what happened, when) to your Discord webhook, only if you add one.
 - **Open closed** (and a per-account **Open**) starts Roblox for every saved account that isn't running, one every 10 seconds, in the game you choose.
 - **Open selected** starts only the accounts you tick. **Seconds between accounts** (5 to 120, default 10) sets the gap between launches.
 - **Game to open:** paste a `roblox.com/games/…` link or a place id in the Offline panel. Nothing is opened until you set one.
@@ -193,7 +210,7 @@ The server only listens on your own PC (`127.0.0.1`), and Tailscale Serve keeps 
 - ❌ Read any cookie unless you add a saved login yourself.
 - ❌ Inject code, read or write game memory, or automate gameplay.
 - ❌ Bypass protections or stop Roblox's idle disconnect.
-- ❌ Upload your logs, record video, or send data anywhere except Roblox's public APIs (and your phone, if you turn monitoring on).
+- ❌ Upload your logs, record video, or send data anywhere except Roblox's public APIs, your phone (if you turn monitoring on) and your own Discord channel (if you set up Discord alerts).
 - ❌ Close or restart your games on its own, unless you turned on the restart option.
 
 Before every window or resource change, it verifies that the process is still the same one it saw before (so a reused process ID can't be mistaken for another account), and it saves original settings so they can be restored.

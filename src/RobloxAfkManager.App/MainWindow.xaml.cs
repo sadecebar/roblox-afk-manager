@@ -62,6 +62,12 @@ public partial class MainWindow : Window
         }
         else if (window.IsNewProfile) await LoginWindow.DiscardAsync(window.FolderPath); // closed without logging in
     }
+    private void SaveDiscord_Click(object sender, RoutedEventArgs e)
+    {
+        string url = DiscordUrlBox.Password; DiscordUrlBox.Clear();
+        viewModel.SaveDiscord(url, DiscordUserBox.Text);
+    }
+    private void ClearDiscord_Click(object sender, RoutedEventArgs e) { DiscordUserBox.Clear(); viewModel.ClearDiscord(); }
     private void Backup_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Back up manager settings", FileName = "RobloxAfkManager-settings.json", Filter = "Settings backup (*.json)|*.json" };
