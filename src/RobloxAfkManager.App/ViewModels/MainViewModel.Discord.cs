@@ -65,7 +65,7 @@ public sealed partial class MainViewModel
         var cutoff = DateTimeOffset.UtcNow.AddHours(-6);
         foreach (var stale in openProblems.Where(p => p.Value.At < cutoff).Select(p => p.Key).ToArray()) openProblems.Remove(stale);
         if (openProblems.Count == 0) return;
-        webhook.Enqueue(new(DateTimeOffset.UtcNow, "You're away", "Still needing attention: " + string.Join(", ", openProblems.Keys.Take(15)) + ".", false), false);
+        webhook.Enqueue(new(DateTimeOffset.UtcNow, "You're away", "Still needing attention: " + string.Join(", ", openProblems.Keys.Take(15)) + ".", false), DiscordWebhook.AlertKind.Info);
     }
 
     private void InitializeDiscord(DiscordWebhook? hook, IUserIdle? userIdle)
@@ -81,15 +81,27 @@ public sealed partial class MainViewModel
             RaiseDiscord();
         }, () => webhook.Configured, HandleError);
         wasAway = IsAway;
-        if (webhook.Configured) Announce(new(DateTimeOffset.UtcNow, "Manager", "Started. Watching your accounts; alerts will appear here.", false), false);
+        if (webhook.Configured) Announce(new(DateTimeOffset.UtcNow, "Manager", "Started. Watching your accounts; alerts will appear here.", false), false, info: true);
     }
 
-    public void Announce(ActivityEntry entry, bool bad)
+    // bad: a problem (posted, pings while away). Not bad: the account is fine again, which edits the message that reported
+    // the problem instead of posting another. info: a plain message such as "manager started", sent only while away.
+    public void Announce(ActivityEntry entry, bool bad, bool info = false)
     {
         if (!webhook.Configured) return;
-        if (bad) openProblems[entry.Label] = entry; else openProblems.Remove(entry.Label);
+        if (bad) openProblems[entry.Label] = entry; else if (!info) openProblems.Remove(entry.Label);
         UpdateAway();
-        if (IsAway) webhook.Enqueue(entry, bad);
+        if (!bad && !info) { webhook.Enqueue(entry, DiscordWebhook.AlertKind.Recovery); return; }
+        if (IsAway) webhook.Enqueue(entry, bad ? DiscordWebhook.AlertKind.Problem : DiscordWebhook.AlertKind.Info);
+    }
+
+    // A closed window has no "back" event of its own: the account is back when a client with the same name shows up again.
+    private void AnnounceReturns()
+    {
+        if (!webhook.Configured || openProblems.Count == 0) return;
+        foreach (var label in openProblems.Where(p => p.Value.Message.StartsWith("Window closed", StringComparison.Ordinal)).Select(p => p.Key).ToArray())
+            if (Clients.Any(c => !c.IsIgnored && c.Label == label && (c.Session is null || c.Session.Phase == SessionPhase.Joined)))
+                Announce(new(DateTimeOffset.UtcNow, label, "Back online.", false), false);
     }
     private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
 
@@ -110,7 +122,7 @@ public sealed partial class MainViewModel
     private void AnnounceClosing()
     {
         if (!webhook.Configured || !IsAway) return;
-        webhook.Enqueue(new(DateTimeOffset.UtcNow, "Manager", "Closed. No alerts will arrive until it is started again.", false), false);
+        webhook.Enqueue(new(DateTimeOffset.UtcNow, "Manager", "Closed. No alerts will arrive until it is started again.", false), DiscordWebhook.AlertKind.Info);
         try { Task.Run(webhook.FlushAsync).Wait(TimeSpan.FromSeconds(3)); } catch (AggregateException) { }
     }
 }

@@ -24,7 +24,7 @@ public sealed class DiscordWebhook : IDisposable
     private readonly TimeSpan batchDelay;
     private readonly IAppLog? log;
     private readonly object gate = new();
-    private readonly List<(ActivityEntry Entry, bool Bad)> queue = [];
+    private readonly List<(ActivityEntry Entry, AlertKind Kind)> queue = [];
     private readonly Queue<DateTimeOffset> sentLog = new();
     private string? url;
     private Task? flushing;
@@ -95,14 +95,33 @@ public sealed class DiscordWebhook : IDisposable
         try { if (File.Exists(path)) File.Delete(path); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
-    // Queues an alert. Alerts that arrive close together are sent as one message, so a PC-wide problem is one ping.
-    public void Enqueue(ActivityEntry entry, bool bad)
+    // What an alert is about. Problems are posted (and ping). Recoveries edit the message that reported the problem
+    // instead of posting again. Info is a plain message, such as "manager started".
+    public enum AlertKind { Problem, Recovery, Info }
+    private enum LineState { Down, Back, Info }
+    private sealed class Line(string label, string message, DateTimeOffset at, LineState state)
+    {
+        public readonly string Label = label, Message = message;
+        public readonly DateTimeOffset At = at;
+        public DateTimeOffset BackAt;
+        public LineState State = state;
+    }
+    private sealed class Posted(string id, List<Line> lines, string? content) { public readonly string Id = id; public readonly List<Line> Lines = lines; public readonly string? Content = content; }
+    // The newest message that reported each account as down, so a later "back" can edit it. Kept in memory only.
+    private readonly Dictionary<string, (Posted Message, Line Line)> open = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<DateTimeOffset> editLog = new();
+    private const int MaxEditsPerHour = 120;
+
+    public void Enqueue(ActivityEntry entry, bool bad) => Enqueue(entry, bad ? AlertKind.Problem : AlertKind.Info);
+
+    // Alerts that arrive close together are handled as one batch, so a PC-wide problem is one ping.
+    public void Enqueue(ActivityEntry entry, AlertKind kind)
     {
         if (url is null || disposed) return;
         lock (gate)
         {
             if (queue.Count >= MaxQueued) return;
-            queue.Add((entry, bad));
+            queue.Add((entry, kind));
             if (flushing is { IsCompleted: false }) return;
             flushing = Task.Run(async () => { await Task.Delay(batchDelay).ConfigureAwait(false); await FlushAsync().ConfigureAwait(false); });
         }
@@ -110,43 +129,99 @@ public sealed class DiscordWebhook : IDisposable
 
     public async Task FlushAsync()
     {
-        (ActivityEntry Entry, bool Bad)[] batch;
+        (ActivityEntry Entry, AlertKind Kind)[] batch;
         lock (gate) { batch = [.. queue]; queue.Clear(); }
         if (batch.Length == 0 || url is null) return;
         var now = DateTimeOffset.UtcNow;
+        foreach (var stale in open.Where(p => now - p.Value.Line.At > TimeSpan.FromHours(24)).Select(p => p.Key).ToArray()) open.Remove(stale);
+
+        var fresh = new List<Line>(); var freshByLabel = new Dictionary<string, Line>(StringComparer.OrdinalIgnoreCase);
+        var infos = new List<Line>(); var edited = new HashSet<Posted>();
+        foreach (var (entry, kind) in batch)
+        {
+            switch (kind)
+            {
+                case AlertKind.Problem:
+                    var line = new Line(entry.Label, entry.Message, entry.At, LineState.Down); fresh.Add(line); freshByLabel[entry.Label] = line; break;
+                case AlertKind.Recovery:
+                    if (freshByLabel.TryGetValue(entry.Label, out var pending) && pending.State == LineState.Down) { pending.State = LineState.Back; pending.BackAt = entry.At; }
+                    else if (open.TryGetValue(entry.Label, out var posted) && posted.Line.State == LineState.Down) { posted.Line.State = LineState.Back; posted.Line.BackAt = entry.At; edited.Add(posted.Message); open.Remove(entry.Label); }
+                    break; // a recovery nobody was told about needs no message
+                default:
+                    infos.Add(new Line(entry.Label, entry.Message, entry.At, LineState.Info)); break;
+            }
+        }
+
+        if (fresh.Count > 0 && TakeMessageSlot(now))
+        {
+            string? content = UserId is not null && fresh.Any(l => l.State == LineState.Down) ? $"<@{UserId}>" : null;
+            var (ok, body) = await SendAsync(HttpMethod.Post, url + "?wait=true", BuildPayload(fresh, content, UserId is not null && content is not null)).ConfigureAwait(false);
+            if (ok && MessageId(body) is { } id)
+            {
+                var message = new Posted(id, fresh, content);
+                foreach (var l in fresh.Where(l => l.State == LineState.Down)) open[l.Label] = (message, l);
+            }
+        }
+        if (infos.Count > 0 && TakeMessageSlot(now)) await SendAsync(HttpMethod.Post, url + "?wait=true", BuildPayload(infos, null, false)).ConfigureAwait(false);
+        foreach (var message in edited)
+        {
+            lock (gate)
+            {
+                while (editLog.Count > 0 && now - editLog.Peek() > TimeSpan.FromHours(1)) editLog.Dequeue();
+                if (editLog.Count >= MaxEditsPerHour) continue;
+                editLog.Enqueue(now);
+            }
+            bool allBack = message.Lines.All(l => l.State != LineState.Down);
+            await SendAsync(HttpMethod.Patch, url + "/messages/" + message.Id, BuildPayload(message.Lines, allBack ? "" : message.Content, false, edit: true)).ConfigureAwait(false);
+        }
+    }
+
+    private bool TakeMessageSlot(DateTimeOffset now)
+    {
         lock (gate)
         {
             while (sentLog.Count > 0 && now - sentLog.Peek() > TimeSpan.FromHours(1)) sentLog.Dequeue();
-            if (sentLog.Count >= MaxMessagesPerHour) { LastResult = "Too many alerts this hour; some were not sent."; return; }
-            sentLog.Enqueue(now);
+            if (sentLog.Count >= MaxMessagesPerHour) { LastResult = "Too many alerts this hour; some were not sent."; return false; }
+            sentLog.Enqueue(now); return true;
         }
-        await PostAsync(BuildPayload(batch)).ConfigureAwait(false);
+    }
+
+    private static string? MessageId(string? body)
+    {
+        try { using var doc = JsonDocument.Parse(body ?? ""); var id = doc.RootElement.GetProperty("id").GetString(); return id is { Length: > 0 and <= 25 } && id.All(char.IsDigit) ? id : null; }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException) { return null; }
     }
 
     public async Task<string> TestAsync()
     {
         if (url is null) return "No webhook saved.";
-        var entry = new ActivityEntry(DateTimeOffset.UtcNow, "Test", "This is a test alert from Roblox AFK Manager. Real alerts look like this.", false);
-        await PostAsync(BuildPayload([(entry, false)])).ConfigureAwait(false);
+        var line = new Line("Test", "This is a test alert from Roblox AFK Manager. Real alerts look like this.", DateTimeOffset.UtcNow, LineState.Info);
+        await SendAsync(HttpMethod.Post, url + "?wait=true", BuildPayload([line], null, false)).ConfigureAwait(false);
         return LastResult;
     }
 
     // The mention is the only thing that makes Discord notify a phone, so it is sent when a user ID is saved. Nothing
     // else can be mentioned: allowed_mentions lists only that user, so a name containing "@everyone" is plain text.
-    private string BuildPayload((ActivityEntry Entry, bool Bad)[] batch)
+    // Edits never ping: Discord only notifies for a mention a message gains, and edits are sent with no mentions allowed.
+    private string BuildPayload(IReadOnlyList<Line> all, string? content, bool ping, bool edit = false)
     {
-        bool bad = batch.Any(b => b.Bad);
-        var lines = batch.Take(MaxLinesPerMessage).Select(b =>
-            $"{(b.Bad ? "🔴" : "🟢")} **{Clip(b.Entry.Label, 60)}**: {Clip(b.Entry.Message, 200)} · <t:{b.Entry.At.ToUnixTimeSeconds()}:R>").ToList();
-        if (batch.Length > MaxLinesPerMessage) lines.Add($"…and {batch.Length - MaxLinesPerMessage} more.");
-        string title = bad ? (batch.Count(b => b.Bad) == 1 ? "An account needs attention" : $"{batch.Count(b => b.Bad)} accounts need attention") : "Account update";
+        int down = all.Count(l => l.State == LineState.Down);
+        var lines = all.Take(MaxLinesPerMessage).Select(l => l.State switch
+        {
+            LineState.Down => $"🔴 **{Clip(l.Label, 60)}**: {Clip(l.Message, 200)} · <t:{l.At.ToUnixTimeSeconds()}:R>",
+            LineState.Back => $"🟢 **{Clip(l.Label, 60)}**: back at <t:{l.BackAt.ToUnixTimeSeconds()}:T> · <t:{l.BackAt.ToUnixTimeSeconds()}:R> (was: {Clip(l.Message, 80)})",
+            _ => $"🟢 **{Clip(l.Label, 60)}**: {Clip(l.Message, 200)} · <t:{l.At.ToUnixTimeSeconds()}:R>",
+        }).ToList();
+        if (all.Count > MaxLinesPerMessage) lines.Add($"…and {all.Count - MaxLinesPerMessage} more.");
+        string title = down > 0 ? (down == 1 ? "An account needs attention" : $"{down} accounts need attention")
+            : all.Any(l => l.State == LineState.Back) ? (all.Count == 1 ? "Account is back" : "All accounts are back") : "Account update";
         var payload = new Dictionary<string, object?>
         {
-            ["username"] = "Roblox AFK Manager",
-            ["content"] = bad && UserId is not null ? $"<@{UserId}>" : null,
-            ["allowed_mentions"] = new Dictionary<string, object?> { ["parse"] = Array.Empty<string>(), ["users"] = UserId is not null && bad ? new[] { UserId } : Array.Empty<string>() },
-            ["embeds"] = new[] { new Dictionary<string, object?> { ["title"] = title, ["description"] = string.Join("\n", lines), ["color"] = bad ? 0xE5534B : 0x3FB950 } },
+            ["content"] = content,
+            ["allowed_mentions"] = new Dictionary<string, object?> { ["parse"] = Array.Empty<string>(), ["users"] = ping && UserId is not null ? new[] { UserId } : Array.Empty<string>() },
+            ["embeds"] = new[] { new Dictionary<string, object?> { ["title"] = title, ["description"] = string.Join("\n", lines), ["color"] = down > 0 ? 0xE5534B : 0x3FB950 } },
         };
+        if (!edit) payload["username"] = "Roblox AFK Manager";
         return JsonSerializer.Serialize(payload);
     }
 
@@ -156,36 +231,39 @@ public sealed class DiscordWebhook : IDisposable
         return clean.Length <= length ? clean : clean[..(length - 1)] + "…";
     }
 
-    private async Task PostAsync(string json)
+    private async Task<(bool Ok, string? Body)> SendAsync(HttpMethod method, string target, string json)
     {
-        if (url is null) return;
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+                using var request = new HttpRequestMessage(method, target) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
                 using var response = await http.SendAsync(request).ConfigureAwait(false);
-                if (response.IsSuccessStatusCode) { LastResult = "Last alert sent."; return; }
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (response.IsSuccessStatusCode) { LastResult = "Last alert sent."; return (true, body); }
                 if (response.StatusCode == HttpStatusCode.TooManyRequests && attempt == 0)
                 {
                     double wait = 2;
-                    try { using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false)); if (doc.RootElement.TryGetProperty("retry_after", out var r)) wait = Math.Clamp(r.GetDouble(), 0.5, 30); }
+                    try { using var doc = JsonDocument.Parse(body); if (doc.RootElement.TryGetProperty("retry_after", out var r)) wait = Math.Clamp(r.GetDouble(), 0.5, 30); }
                     catch (Exception ex) when (ex is JsonException or InvalidOperationException) { }
                     await Task.Delay(TimeSpan.FromSeconds(wait)).ConfigureAwait(false);
                     continue;
                 }
+                // A message that was deleted in Discord can't be edited; that is not a problem with the webhook itself.
+                if (method == HttpMethod.Patch && response.StatusCode == HttpStatusCode.NotFound) return (false, null);
                 LastResult = response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
                     ? "Discord says this webhook no longer exists. Create a new one and save it again."
                     : $"Discord did not accept the alert ({(int)response.StatusCode}).";
-                return;
+                return (false, null);
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
                 LastResult = "Couldn't reach Discord. Check the internet connection.";
                 log?.Write("A Discord alert could not be sent (" + ex.GetType().Name + ").");
-                return;
+                return (false, null);
             }
         }
+        return (false, null);
     }
 
     public void Dispose()

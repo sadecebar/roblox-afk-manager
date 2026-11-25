@@ -79,7 +79,7 @@ Away from your PC? The manager can message a Discord channel when something goes
 - a game **window closed** or is no longer detected (crash, or you closed it)
 - a client is **not responding** or **stuck joining**
 - Roblox **ended an account's login** (and whether the automatic restart worked)
-- an account **came back** after one of the above
+- an account **came back** after one of the above. This does not send a new message: the bot **edits the original alert**, turning that account's line green with the time it returned ("back at 03:41"). When every account in a message is back, the title becomes "All accounts are back" and the mention is removed. Edits never ping again.
 
 Open **Settings → Alerts**, paste a channel webhook address (channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL), and press **Test**. Add your Discord user ID if you want your phone to buzz: Discord only notifies you if you are mentioned, so without it messages arrive silently in the channel.
 
@@ -87,6 +87,7 @@ Open **Settings → Alerts**, paste a channel webhook address (channel settings 
 - Several events close together are sent as **one message**, so twelve accounts dropping at once is one ping, not twelve. At most 30 messages an hour.
 - The webhook address is a secret. It is stored **encrypted for your Windows user**, sent only to Discord, and never logged. **Turn off** deletes it. If it ever leaks, delete the webhook in Discord.
 - Messages contain account names (as shown on the cards), a short description and a time. Nothing else leaves your PC. Alerts can only mention you: nobody else, and never `@everyone`.
+- Only alerts you were actually sent can be edited. A message can't be edited after you restart the manager, and an account that was only known as "Client 07" may come back under a different number, so its line stays red. Delete a message in Discord and its line is simply not updated.
 - The manager also posts when it **starts** and when it is **closed normally**. If the whole PC loses power or the manager is killed, nothing can be sent, so silence is not proof that everything is fine.
 
 ### 📱 Phone monitoring

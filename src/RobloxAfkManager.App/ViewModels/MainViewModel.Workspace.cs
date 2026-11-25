@@ -149,6 +149,7 @@ public sealed partial class MainViewModel
             if (entry.Warning) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
             Announce(entry, entry.Warning);
         }
+        AnnounceReturns();
         if (events.Count > 0) { RaiseUnread(); Raise(nameof(HasActivity)); SaveWorkspace(); }
     }
     public void MarkActivityRead() { unreadAlerts = 0; RaiseUnread(); }

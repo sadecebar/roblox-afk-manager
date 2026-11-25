@@ -16,13 +16,14 @@ internal static class Program
     }
     private sealed class FakeDiscord : HttpMessageHandler
     {
-        public readonly List<(string Url, string Body)> Requests = [];
+        public readonly List<(string Url, string Body, string Method)> Requests = [];
+        private int ids;
         public readonly Queue<(System.Net.HttpStatusCode Code, string Body)> Replies = new();
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             string body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
-            lock (Requests) Requests.Add((request.RequestUri!.ToString(), body));
-            var (code, reply) = Replies.Count > 0 ? Replies.Dequeue() : (System.Net.HttpStatusCode.NoContent, "");
+            lock (Requests) Requests.Add((request.RequestUri!.ToString(), body, request.Method.Method));
+            var (code, reply) = Replies.Count > 0 ? Replies.Dequeue() : request.Method == HttpMethod.Post ? (System.Net.HttpStatusCode.OK, "{\"id\":\"" + (700000000000000000L + ++ids) + "\"}") : (System.Net.HttpStatusCode.OK, "{}");
             return new HttpResponseMessage(code) { Content = new StringContent(reply) };
         }
     }
@@ -215,20 +216,94 @@ internal static class Program
                 hook.Enqueue(new(DateTimeOffset.UtcNow, "alt3", "A new game join was reported by Roblox.", false), false);
                 for (int i = 0; i < 40 && fake.Requests.Count == 0; i++) Thread.Sleep(50);
                 Thread.Sleep(300);
-                Check(fake.Requests.Count == 1); // three events, one message
+                Check(fake.Requests.Count == 2); // two problems in one message, one info message
                 using var doc = System.Text.Json.JsonDocument.Parse(fake.Requests[0].Body);
                 Check(doc.RootElement.GetProperty("content").GetString() == "<@111222333444555666>");
                 var mentions = doc.RootElement.GetProperty("allowed_mentions");
                 Check(mentions.GetProperty("parse").GetArrayLength() == 0 && mentions.GetProperty("users").GetArrayLength() == 1);
                 string text = doc.RootElement.GetProperty("embeds")[0].GetProperty("description").GetString()!;
-                Check(text.Contains("alt1") && text.Contains("alt2") && text.Contains("alt3") && text.Contains("disconnect"));
+                Check(text.Contains("alt1") && text.Contains("alt2") && !text.Contains("alt3") && text.Contains("disconnect"));
+                using (var info = System.Text.Json.JsonDocument.Parse(fake.Requests[1].Body))
+                    Check(info.RootElement.GetProperty("content").ValueKind == System.Text.Json.JsonValueKind.Null && info.RootElement.GetProperty("embeds")[0].GetProperty("description").GetString()!.Contains("alt3"));
                 Check(doc.RootElement.GetProperty("embeds")[0].GetProperty("title").GetString() == "2 accounts need attention");
                 // An update with no problem does not ping.
                 hook.Enqueue(new(DateTimeOffset.UtcNow, "alt3", "Back.", false), false);
+                for (int i = 0; i < 40 && fake.Requests.Count < 3; i++) Thread.Sleep(50);
+                Thread.Sleep(200);
+                using var calm = System.Text.Json.JsonDocument.Parse(fake.Requests[2].Body);
+                Check(calm.RootElement.GetProperty("content").ValueKind == System.Text.Json.JsonValueKind.Null && calm.RootElement.GetProperty("allowed_mentions").GetProperty("users").GetArrayLength() == 0);
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("When an account is back, the bot edits its original ping instead of sending another", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-edit-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var fake = new FakeDiscord();
+                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(100));
+                hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", "111222333444555666");
+                var down = DateTimeOffset.UtcNow.AddMinutes(-3);
+                hook.Enqueue(new(down, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                hook.Enqueue(new(down, "alt2", "Roblox's log reports a disconnect.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                for (int i = 0; i < 40 && fake.Requests.Count < 1; i++) Thread.Sleep(50);
+                Thread.Sleep(200);
+                Check(fake.Requests.Count == 1 && fake.Requests[0].Method == "POST" && fake.Requests[0].Url.EndsWith("?wait=true"));
+                // alt1 returns: the same message is edited, nothing new is posted
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Back online.", false), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Recovery);
                 for (int i = 0; i < 40 && fake.Requests.Count < 2; i++) Thread.Sleep(50);
                 Thread.Sleep(200);
-                using var calm = System.Text.Json.JsonDocument.Parse(fake.Requests[1].Body);
-                Check(calm.RootElement.GetProperty("content").ValueKind == System.Text.Json.JsonValueKind.Null && calm.RootElement.GetProperty("allowed_mentions").GetProperty("users").GetArrayLength() == 0);
+                Check(fake.Requests.Count == 2 && fake.Requests[1].Method == "PATCH" && fake.Requests[1].Url.Contains("/messages/700000000000000001"));
+                using (var first = System.Text.Json.JsonDocument.Parse(fake.Requests[1].Body))
+                {
+                    var embed = first.RootElement.GetProperty("embeds")[0];
+                    string text = embed.GetProperty("description").GetString()!;
+                    Check(embed.GetProperty("title").GetString() == "An account needs attention"); // alt2 is still down
+                    Check(text.Contains("back at <t:") && text.Contains("alt1") && text.Contains("alt2") && text.Contains("🟢") && text.Contains("🔴"));
+                    Check(first.RootElement.GetProperty("allowed_mentions").GetProperty("users").GetArrayLength() == 0 && !first.RootElement.TryGetProperty("username", out _));
+                    Check(first.RootElement.GetProperty("content").GetString() == "<@111222333444555666>"); // still shown while something is down
+                }
+                // alt2 returns: everything is back, the mention text is removed
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt2", "A new game join was reported by Roblox.", false), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Recovery);
+                for (int i = 0; i < 40 && fake.Requests.Count < 3; i++) Thread.Sleep(50);
+                Thread.Sleep(200);
+                Check(fake.Requests.Count == 3 && fake.Requests[2].Method == "PATCH");
+                using (var last = System.Text.Json.JsonDocument.Parse(fake.Requests[2].Body))
+                {
+                    Check(last.RootElement.GetProperty("embeds")[0].GetProperty("title").GetString() == "All accounts are back");
+                    Check(last.RootElement.GetProperty("content").GetString() == "");
+                }
+                // an account nobody was told about, and one that fails and recovers in the same moment, send nothing new
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt9", "Back online.", false), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Recovery);
+                Thread.Sleep(400); Check(fake.Requests.Count == 3);
+                // a second failure of the same account is a new message (and a new ping)
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                for (int i = 0; i < 40 && fake.Requests.Count < 4; i++) Thread.Sleep(50);
+                Thread.Sleep(200);
+                Check(fake.Requests.Count == 4 && fake.Requests[3].Method == "POST");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("A closed window counts as back when the same account shows up again", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-ret-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var fake = new FakeDiscord(); var idle = new FakeIdle { Idle = TimeSpan.FromMinutes(30) };
+                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(80));
+                hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", null);
+                using var vm = new MainViewModel(new FakeWindowSystem(1), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(),
+                    loginVault: new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root, discordWebhook: hook, userIdle: idle);
+                vm.RefreshAsync().GetAwaiter().GetResult();
+                string label = vm.Clients[0].Label;
+                vm.Announce(new(DateTimeOffset.UtcNow, label, "Window closed or is no longer detected.", true), true);
+                for (int i = 0; i < 40 && fake.Requests.Count < 2; i++) Thread.Sleep(50);
+                Thread.Sleep(150);
+                Check(fake.Requests.Count == 2 && fake.Requests[1].Method == "POST", "problem not posted: " + fake.Requests.Count); // [0] is the "manager started" message, sent because the person is away
+                vm.RefreshAsync().GetAwaiter().GetResult(); // a client with that name is running: it is back
+                for (int i = 0; i < 40 && fake.Requests.Count < 3; i++) Thread.Sleep(50);
+                Thread.Sleep(150);
+                Check(fake.Requests.Count == 3 && fake.Requests[2].Method == "PATCH" && fake.Requests[2].Body.Contains("back at"), "no edit: " + fake.Requests.Count + " label=" + label + " clients=" + vm.Clients.Count);
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });
