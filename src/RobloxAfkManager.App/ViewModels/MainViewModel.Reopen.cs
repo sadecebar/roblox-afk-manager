@@ -101,10 +101,10 @@ public sealed partial class MainViewModel
             }
             int pid = await launcher.LaunchSafelyAsync(cookie, gamePlaceId, CancellationToken.None, ticket);
             launchedPids[pid] = due; launchedAt[due] = DateTimeOffset.UtcNow;
-            // Not announced to Discord as "back": the alert is edited when the account has really rejoined.
+            // Sent to Discord as a plain "what was done" message; the problem alert itself turns green when the account has really rejoined.
             AddActivity(pending.Label, (pending.CloseFirst
                 ? $"Stayed disconnected for {(int)KickedDelay.TotalMinutes} minutes{(pending.Reason is { } why ? $" ({why.TrimEnd('.')})" : "")}. Fix: closed the stuck client and reopened it from its saved login."
-                : "Window closed while you were away. Fix: reopened it from its saved login."), false, announce: false);
+                : "Window closed while you were away. Fix: reopened it from its saved login."), false, info: true);
             Warning = false; Message = $"{pending.Label} was reopened.";
         }
         catch (Exception ex)

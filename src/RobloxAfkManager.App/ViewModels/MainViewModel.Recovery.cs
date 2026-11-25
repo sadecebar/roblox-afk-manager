@@ -21,13 +21,13 @@ public sealed partial class MainViewModel
     public string IncidentLogPath => System.IO.Path.Combine(settingsFolder, "incidents.log");
     private void Journal(ActivityEntry entry) => (incidents ??= new(IncidentLogPath)).Write(entry);
 
-    private void AddActivity(string label, string message, bool warning, bool announce = true)
+    private void AddActivity(string label, string message, bool warning, bool announce = true, bool info = false)
     {
         var entry = new ActivityEntry(DateTimeOffset.UtcNow, label, message, warning);
         Journal(entry);
         Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);
         if (warning) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
-        if (announce) Announce(entry, warning);
+        if (announce) Announce(entry, warning, info);
         RaiseUnread(); Raise(nameof(HasActivity)); SaveWorkspace();
     }
 
@@ -60,7 +60,7 @@ public sealed partial class MainViewModel
             if (!closed.Success) throw new InvalidOperationException(closed.Message);
             int pid = await launcher.LaunchSafelyAsync(cookie, GamePlaceId, CancellationToken.None, ticket);
             launchedPids[pid] = account; launchedAt[account] = DateTimeOffset.UtcNow;
-            AddActivity(label, "Roblox ended this account's login, so it was restarted from its saved login.", false);
+            AddActivity(label, "Roblox ended this account's login. Fix: closed the client and restarted it from its saved login.", false, info: true);
             Warning = false; Message = $"{label}'s login was lost. Restarted it.";
         }
         catch (Exception ex)
