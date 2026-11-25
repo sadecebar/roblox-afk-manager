@@ -10,6 +10,8 @@ public sealed partial class MainViewModel
     private DiscordWebhook webhook = null!;
     public AsyncCommand TestDiscordCommand { get; private set; } = null!;
     public bool DiscordConfigured => webhook.Configured;
+    // One message that lists every account and is edited in place, instead of a stream of new messages.
+    public bool BoardEnabled { get => webhook.BoardEnabled; set { webhook.SetBoard(value); RaiseDiscord(); if (value) UpdateBoard(); } }
     public string DiscordUserId => webhook.UserId ?? "";
     public string DiscordSummary => !webhook.Configured ? "Not set up. Alerts stay on this PC."
         : "Alerts go to your Discord channel." + (webhook.UserId is null ? " Add your user ID to get a phone ping." : " You will be pinged.")
@@ -106,7 +108,7 @@ public sealed partial class MainViewModel
             if (Clients.Any(c => !c.IsIgnored && c.Label == label && (c.Session is null || c.Session.Phase == SessionPhase.Joined)))
                 Announce(new(DateTimeOffset.UtcNow, label, "Back online.", false), false);
     }
-    private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); Raise(nameof(ShowAwayChip)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
+    private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); Raise(nameof(BoardEnabled)); Raise(nameof(ShowAwayChip)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
 
     public void SaveDiscord(string? url, string? userId)
     {
@@ -124,8 +126,41 @@ public sealed partial class MainViewModel
 
     private void AnnounceClosing()
     {
-        if (!webhook.Configured || !IsAway) return;
-        webhook.Enqueue(new(DateTimeOffset.UtcNow, "Manager", "Closed. No alerts will arrive until it is started again.", false), DiscordWebhook.AlertKind.Info);
-        try { Task.Run(webhook.FlushAsync).Wait(TimeSpan.FromSeconds(3)); } catch (AggregateException) { }
+        if (!webhook.Configured) return;
+        if (IsAway) webhook.Enqueue(new(DateTimeOffset.UtcNow, "Manager", "Closed. No alerts will arrive until it is started again.", false), DiscordWebhook.AlertKind.Info);
+        try { Task.Run(async () => { await webhook.FlushAsync(); await webhook.CloseBoardAsync(); }).Wait(TimeSpan.FromSeconds(4)); } catch (AggregateException) { }
+    }
+
+    // Builds one line per account from what the manager knows right now: running clients, then saved logins and recently seen
+    // accounts that are not running.
+    private void UpdateBoard()
+    {
+        if (!webhook.BoardEnabled) return;
+        var now = DateTimeOffset.UtcNow;
+        var rows = new List<BoardRow>(); var seen = new HashSet<long>();
+        foreach (var tile in Clients.Where(c => !c.IsIgnored))
+        {
+            if (tile.AccountId is { } running) seen.Add(running);
+            var session = tile.Session;
+            if (tile.Status == "Not responding") rows.Add(new(tile.Label, BoardState.Down, "Not responding"));
+            else if (session is { Phase: SessionPhase.Disconnected }) rows.Add(new(tile.Label, BoardState.Down, session.EventAt is { } at ? $"Disconnected · <t:{at.ToUnixTimeSeconds()}:R>" : "Disconnected"));
+            else if (session is { Phase: SessionPhase.Joining }) rows.Add(session.EventAt is { } started && now - started > TimeSpan.FromMinutes(2)
+                ? new(tile.Label, BoardState.Warn, "Possibly stuck joining") : new(tile.Label, BoardState.Warn, "Joining…"));
+            else if (session is { Phase: SessionPhase.Joined, JoinedAt: { } joined }) rows.Add(new(tile.Label, BoardState.Ok, $"Joined · since <t:{joined.ToUnixTimeSeconds()}:R>"));
+            else rows.Add(new(tile.Label, BoardState.Ok, "Running"));
+        }
+        var others = vault.Logins.Select(l => (Id: l.UserId, Name: l.Username))
+            .Concat(profiles.Values.Where(p => !p.Ignored && p.LastSeen is { } seenAt && now - seenAt < TimeSpan.FromHours(24)).Select(p => (Id: p.UserId, Name: p.CustomName ?? p.Username ?? "Account " + p.UserId)))
+            .Where(a => !seen.Contains(a.Id)).GroupBy(a => a.Id).Select(g => g.First());
+        foreach (var (id, saved) in others)
+        {
+            profiles.TryGetValue(id, out var profile);
+            string name = profile?.CustomName ?? profile?.Username ?? saved;
+            if (pendingReopen.ContainsKey(id)) rows.Add(new(name, BoardState.Warn, "Closed · reopening soon"));
+            else if (launchedAt.TryGetValue(id, out var launched) && now - launched < LaunchGrace) rows.Add(new(name, BoardState.Warn, "Starting…"));
+            else if (profile?.LastSeen is { } last) rows.Add(new(name, BoardState.Down, $"Closed · last seen <t:{last.ToUnixTimeSeconds()}:R>"));
+            else rows.Add(new(name, BoardState.Idle, "Not running"));
+        }
+        webhook.QueueBoard(rows);
     }
 }

@@ -5,6 +5,7 @@
 ### New
 - **Settings page.** One **Settings** button with five tabs (Accounts, Alerts, Layout, Plans, Phone). The Arrange, Plans and Mobile header buttons moved into it; Activity, Offline and Ignored stay in the header because they show live badges.
 - **Discord alerts.** Optional webhook that messages a channel when an account disconnects or is kicked, its game or window closes, it freezes, or it loses its login. Batched, pings only you, stored encrypted. See the README.
+- **Live status board.** Optional: one Discord message lists every account and its state and is edited in place when something changes (at most every 10 seconds), instead of new messages. Marked "manager closed" when the manager stops.
 - **Alerts update themselves.** When an account comes back, the bot edits its original Discord alert (green line, "back at 03:41") instead of posting again, and nobody is pinged twice.
 - **Away mode.** Alerts are sent only while you're away from the PC (automatic after 2 minutes without keyboard or mouse, or forced either way). A header chip shows At PC / Away. Closing a client yourself at the PC never pings you.
 - **Sleep mode.** Click the chip to count as away even while you use the PC. Click again to go back to automatic.

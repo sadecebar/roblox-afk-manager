@@ -11,14 +11,15 @@ namespace RobloxAfkManager.App.Services;
 // Sends account alerts to a Discord channel through a webhook the user creates. Off until a webhook is saved.
 // The webhook address is a secret (anyone with it can post to the channel), so it is stored encrypted for the
 // current Windows user, sent only to Discord, and never written to the log.
-public sealed class DiscordWebhook : IDisposable
+public sealed partial class DiscordWebhook : IDisposable
 {
     private static readonly Regex UrlPattern = new(@"^https://(?:(?:ptb|canary)\.)?(?:discord|discordapp)\.com/api/webhooks/\d{15,25}/[A-Za-z0-9_\-]{20,120}$", RegexOptions.Compiled, TimeSpan.FromMilliseconds(200));
     private static readonly Regex UserPattern = new(@"^\d{15,25}$", RegexOptions.Compiled, TimeSpan.FromMilliseconds(200));
     private const int MaxLinesPerMessage = 20, MaxMessagesPerHour = 30, MaxQueued = 100;
 
     private sealed record Stored(string Cipher, string? UserId);
-    private readonly string path;
+    private readonly string path, folder;
+    private readonly TimeSpan boardInterval;
     private readonly HttpClient http;
     private readonly bool ownsClient;
     private readonly TimeSpan batchDelay;
@@ -35,15 +36,17 @@ public sealed class DiscordWebhook : IDisposable
     // Plain-language result of the last send, for the settings panel. Never contains the address.
     public string LastResult { get; private set; } = "";
 
-    public DiscordWebhook(string? folder = null, HttpMessageHandler? handler = null, TimeSpan? batchDelay = null, IAppLog? log = null)
+    public DiscordWebhook(string? folder = null, HttpMessageHandler? handler = null, TimeSpan? batchDelay = null, IAppLog? log = null, TimeSpan? boardInterval = null)
     {
-        path = Path.Combine(folder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager"), "webhook.dat");
+        this.folder = folder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager");
+        path = Path.Combine(this.folder, "webhook.dat");
+        this.boardInterval = boardInterval ?? TimeSpan.FromSeconds(10);
         ownsClient = handler is null;
         http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = TimeSpan.FromSeconds(15) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("RobloxAfkManager (alerts)");
         this.batchDelay = batchDelay ?? TimeSpan.FromSeconds(5);
         this.log = log;
-        Load();
+        Load(); LoadBoard();
     }
 
     public static bool IsValidUrl(string? value) => value is not null && UrlPattern.IsMatch(value.Trim());
@@ -92,6 +95,7 @@ public sealed class DiscordWebhook : IDisposable
     {
         url = null; UserId = null; LastResult = "";
         lock (gate) queue.Clear();
+        ForgetBoard();
         try { if (File.Exists(path)) File.Delete(path); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
@@ -231,14 +235,15 @@ public sealed class DiscordWebhook : IDisposable
         return clean.Length <= length ? clean : clean[..(length - 1)] + "…";
     }
 
-    private async Task<(bool Ok, string? Body)> SendAsync(HttpMethod method, string target, string json)
+    private async Task<(bool Ok, string? Body)> SendAsync(HttpMethod method, string target, string? json)
     {
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                using var request = new HttpRequestMessage(method, target) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+                using var request = new HttpRequestMessage(method, target) { Content = json is null ? null : new StringContent(json, Encoding.UTF8, "application/json") };
                 using var response = await http.SendAsync(request).ConfigureAwait(false);
+                lastStatus = response.StatusCode;
                 string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (response.IsSuccessStatusCode) { LastResult = "Last alert sent."; return (true, body); }
                 if (response.StatusCode == HttpStatusCode.TooManyRequests && attempt == 0)
@@ -258,6 +263,7 @@ public sealed class DiscordWebhook : IDisposable
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
+                lastStatus = null;
                 LastResult = "Couldn't reach Discord. Check the internet connection.";
                 log?.Write("A Discord alert could not be sent (" + ex.GetType().Name + ").");
                 return (false, null);

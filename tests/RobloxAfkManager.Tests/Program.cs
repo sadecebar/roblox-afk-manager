@@ -1,3 +1,4 @@
+using BoardRow = RobloxAfkManager.App.Services.BoardRow;
 using System.Net.Http;
 using System.IO;
 using RobloxAfkManager.Core;
@@ -415,6 +416,93 @@ internal static class Program
                 }
                 using (var again = Make()) Check(again.SleepMode && again.IsAway, "sleep mode was not remembered");
                 using (var last = Make()) { last.ToggleSleep(); Check(!last.IsAway && !last.SleepMode && last.AwayLabel == "At PC"); }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Status board: one message is posted, then edited in place, throttled, remembered across restarts, closed honestly and deleted when turned off", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-board-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                const string good = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH";
+                var fake = new FakeDiscord();
+                BoardRow Row(string n, RobloxAfkManager.App.Services.BoardState st, string d) => new(n, st, d);
+                var ok = RobloxAfkManager.App.Services.BoardState.Ok; var down = RobloxAfkManager.App.Services.BoardState.Down;
+                using (var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(120)))
+                {
+                    hook.Save(good, null);
+                    Check(!hook.BoardEnabled); hook.QueueBoard([Row("alt1", ok, "Running")]); Thread.Sleep(300); Check(fake.Requests.Count == 0, "board sent while off");
+                    hook.SetBoard(true); Check(hook.BoardEnabled);
+                    var picture = new[] { Row("zed", ok, "Joined"), Row("alt2", down, "Closed"), Row("alt1", ok, "Joined") };
+                    hook.QueueBoard(picture);
+                    for (int i = 0; i < 40 && fake.Requests.Count < 1; i++) Thread.Sleep(50);
+                    Thread.Sleep(150);
+                    Check(fake.Requests.Count == 1 && fake.Requests[0].Method == "POST" && fake.Requests[0].Url.EndsWith("?wait=true"));
+                    using (var first = System.Text.Json.JsonDocument.Parse(fake.Requests[0].Body))
+                    {
+                        var embed = first.RootElement.GetProperty("embeds")[0]; string text = embed.GetProperty("description").GetString()!;
+                        Check(embed.GetProperty("title").GetString() == "Account status" && text.Contains("2 of 3 online"));
+                        Check(text.IndexOf("alt2") < text.IndexOf("alt1") && text.IndexOf("alt1") < text.IndexOf("zed"), "problems must be listed first"); // down first, then alphabetical
+                        Check(first.RootElement.GetProperty("allowed_mentions").GetProperty("users").GetArrayLength() == 0);
+                    }
+                    hook.QueueBoard(picture); Thread.Sleep(400); Check(fake.Requests.Count == 1, "an unchanged board must not be edited");
+                    // Changes: edit the same message; several quick changes collapse to the newest one.
+                    hook.QueueBoard([Row("zed", ok, "Joined"), Row("alt2", ok, "Joined"), Row("alt1", ok, "Joined")]);
+                    hook.QueueBoard([Row("zed", down, "Closed"), Row("alt2", ok, "Joined"), Row("alt1", ok, "Joined")]);
+                    hook.QueueBoard([Row("zed", down, "Closed"), Row("alt2", down, "Closed"), Row("alt1", ok, "Joined")]);
+                    Thread.Sleep(700);
+                    Check(fake.Requests.Count is >= 2 and <= 3 && fake.Requests.Skip(1).All(r => r.Method == "PATCH" && r.Url.EndsWith("/messages/700000000000000001")), $"edits: {fake.Requests.Count}");
+                    using (var latest = System.Text.Json.JsonDocument.Parse(fake.Requests[^1].Body))
+                        Check(latest.RootElement.GetProperty("embeds")[0].GetProperty("description").GetString()!.Contains("1 of 3 online"), "the newest picture must win");
+                }
+                // A restart picks up the same message.
+                int before = fake.Requests.Count;
+                using (var again = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(50)))
+                {
+                    Check(again.BoardEnabled);
+                    again.QueueBoard([Row("alt1", ok, "Running")]);
+                    for (int i = 0; i < 40 && fake.Requests.Count <= before; i++) Thread.Sleep(50);
+                    Thread.Sleep(150);
+                    Check(fake.Requests.Count == before + 1 && fake.Requests[^1].Method == "PATCH" && fake.Requests[^1].Url.EndsWith("/messages/700000000000000001"), "restart did not continue the same message");
+                    // The message was deleted in Discord: a new one is posted.
+                    fake.Replies.Enqueue((System.Net.HttpStatusCode.NotFound, "{}"));
+                    again.QueueBoard([Row("alt1", down, "Closed")]);
+                    for (int i = 0; i < 40 && fake.Requests.Count < before + 3; i++) Thread.Sleep(50);
+                    Thread.Sleep(150);
+                    Check(fake.Requests[^2].Method == "PATCH" && fake.Requests[^1].Method == "POST", "a deleted board message was not replaced");
+                    // Closing: the board says it is no longer live.
+                    int mark = fake.Requests.Count;
+                    again.CloseBoardAsync().GetAwaiter().GetResult();
+                    Check(fake.Requests.Count == mark + 1 && fake.Requests[^1].Method == "PATCH" && fake.Requests[^1].Body.Contains("manager closed"));
+                    // Turning it off deletes the message.
+                    again.SetBoard(false);
+                    for (int i = 0; i < 40 && fake.Requests.Count == mark + 1; i++) Thread.Sleep(50);
+                    Check(fake.Requests[^1].Method == "DELETE" && !again.BoardEnabled);
+                }
+                Check(!File.Exists(Path.Combine(root, "board.txt")) || !File.ReadAllText(Path.Combine(root, "board.txt")).StartsWith("1"));
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("The status board lists running, starting and closed accounts from the view model", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-boardvm-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var fake = new FakeDiscord();
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(88, "SleepyAlt", new string('s', 130));
+                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(50));
+                hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", null);
+                using var vm = new MainViewModel(new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks), new TestLog(), accountNameLookup: new FixedAccountLookup(77), workspaceStore: new MemoryWorkspaceStore(),
+                    accountLauncher: new RecordingLauncher(), loginVault: vault, settingsFolder: root, discordWebhook: hook, userIdle: new FakeIdle());
+                Check(!vm.BoardEnabled); vm.BoardEnabled = true; Check(vm.BoardEnabled);
+                for (int i = 0; i < 40 && fake.Requests.Count == 0; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(80); }
+                for (int i = 0; i < 6; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(80); }
+                Thread.Sleep(300);
+                Check(fake.Requests.Count >= 1 && fake.Requests[0].Method == "POST");
+                using var doc = System.Text.Json.JsonDocument.Parse(fake.Requests[^1].Body);
+                string text = doc.RootElement.GetProperty("embeds")[0].GetProperty("description").GetString()!;
+                Check(text.Contains("SleepyAlt") && text.Contains("Not running"), "saved account that never ran should be listed as not running: " + text);
+                Check(text.Contains("FixtureRanger") || text.Contains("Client 01"), "running client missing: " + text);
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         });
