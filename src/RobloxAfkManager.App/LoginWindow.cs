@@ -25,7 +25,7 @@ public sealed class LoginWindow : Window
         && (uri.AbsoluteUri == "about:blank" || uri.Host == "roblox.com" || uri.Host.EndsWith(".roblox.com", StringComparison.OrdinalIgnoreCase));
 
     private readonly WebView2 web = new();
-    private readonly TextBlock status = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xC9, 0xCD, 0xD6)), Margin = new Thickness(14, 10, 14, 10), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock status = new() { Foreground = Application.Current?.TryFindResource("LoginTextBrush") as Brush ?? Brushes.LightGray, Margin = new Thickness(14, 10, 14, 10), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly AccountLauncher launcher = new(new WindowsRobloxClients());
     private readonly DispatcherTimer poll = new() { Interval = TimeSpan.FromSeconds(2) };
     private string? lastTried;
@@ -43,7 +43,7 @@ public sealed class LoginWindow : Window
         Title = existingUserId is null ? "Log in to Roblox: add an account" : "Log in to Roblox";
         Width = 1000; Height = 760; MinWidth = 640; MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x0F, 0x11, 0x17));
+        Background = TryFindResource("LoginBackgroundBrush") as Brush ?? Brushes.Black;
         status.Text = existingUserId is null
             ? "Log in to the account you want to add. This window closes by itself once you're logged in. Don't press Log out."
             : "Checking this account's saved browser session. If Roblox asks you to log in, do it here.";

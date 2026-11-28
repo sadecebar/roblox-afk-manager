@@ -5,6 +5,8 @@ The desktop is a preview workspace. Game content occupies most of the window; se
 ## Visual system
 
 - "Night shift" palette (defined in `src/RobloxAfkManager.App/Themes/Dark.xaml`): canvas `#07070A`, cards `#101016`, borders `#22222C`, text `#EEEEF4`, muted `#9A9AAC`. One violet accent `#9D8CFF` for brand, primary actions, selection and focus.
+- Every colour the window uses is a named brush in `Themes/Dark.xaml`, including card borders by tone, the drag-and-drop highlight, live preview backgrounds, the login window and the title bar (it takes `CanvasBrush`). Restyling means editing the theme; XAML and code refer to brushes by name only.
+- View-models expose facts, never WPF types: status as text and tone names, avatars as PNG bytes (shown through the `AvatarImage` converter). A test fails if a view-model exposes an image, brush or colour.
 - Status tones (good, pending, warn, alert) drive the card status pill, the avatar status dot and the card border. A card that needs attention gets a red-tinted border and background, so problems can be spotted across the room. Text always accompanies the color.
 - The header shows a fleet health summary (all clear / N need attention, joined count, combined RAM). On narrow windows (<980 px), the summary and toolbar labels collapse to icons with tooltips, and total RAM moves to the status bar.
 - Segoe UI Variable Text/Display, with Cascadia Mono for slot numbers and codes. Tabular numerals for aligned data.

@@ -178,7 +178,7 @@ internal static class SessionWorkspaceTests
         {
             var fake = new FakeWindowSystem(1); var tile = new ClientTileViewModel(fake.Detect()[0], 1);
             tile.SetAccountDetails(new(Report(SessionPhase.Joined, Now.AddMinutes(-75)), "Fixture", "Fixture game", null)); tile.UpdateSessionClock(Now);
-            Program.Check(tile.SessionDuration == "1h 15m" && tile.SessionStatus == "Joined (log)" && tile.Avatar is null && tile.ProfileHint.Contains("77"));
+            Program.Check(tile.SessionDuration == "1h 15m" && tile.SessionStatus == "Joined (log)" && tile.AvatarPng is null && tile.ProfileHint.Contains("77"));
             tile.SetAccountDetails(new(Report(SessionPhase.Disconnected), "Fixture", "Fixture game", null)); tile.UpdateSessionClock(Now);
             Program.Check(tile.NeedsAttention && tile.SessionDuration == "" && tile.SessionStatus == "Disconnected (log)");
             tile.UpdateSessionClock(Now.AddMinutes(5)); Program.Check(tile.SessionStatus == "Session unknown");

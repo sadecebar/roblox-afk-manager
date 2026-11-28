@@ -1,5 +1,4 @@
 using RobloxAfkManager.Core;
-using System.Windows.Media;
 
 namespace RobloxAfkManager.App.ViewModels;
 
@@ -10,14 +9,12 @@ public sealed class ClientTileViewModel : ObservableObject
     private readonly Action<ClientTileViewModel, bool> requestIgnore;
     private ClientWindow shownWindow;
     private int previewRevision;
-    private byte[]? avatarBytes;
     private DateTimeOffset clock = DateTimeOffset.UtcNow;
     private string shownLabel;
 
     public ClientTileViewModel(EngineClient client, Action<ClientTileViewModel, bool> requestIgnore)
     {
         Client = client; this.requestIgnore = requestIgnore; shownWindow = client.Window; shownLabel = client.Label;
-        UpdateAvatar();
         client.Changed += _ => Refresh();
     }
 
@@ -29,7 +26,8 @@ public sealed class ClientTileViewModel : ObservableObject
     public void UpdateSessionClock(DateTimeOffset now) { clock = now; foreach (var name in Properties) Raise(name); }
     public long? AccountId => Client.AccountId;
     public SessionReport? Session => Client.Session;
-    public ImageSource? Avatar { get; private set; }
+    // The avatar as PNG bytes; the window turns them into an image (AvatarImageConverter). Null until known.
+    public byte[]? AvatarPng => Client.Account?.AvatarPng;
     public string AvatarFallback => Label.Length > 0 ? Label[..1].ToUpperInvariant() : "?";
     public string ProfileHint => AccountId is { } id ? $"Account ID {id}. Name, order, ignore choice and preferred plan are remembered across restarts." : "Waiting for an account ID. Names and choices currently apply to this process only.";
     public string? KnownGameName => Client.KnownGameName;
@@ -108,25 +106,17 @@ public sealed class ClientTileViewModel : ObservableObject
     // Stages account details on this card's client (tests and design views). The engine sets them from the Roblox log.
     public void SetAccountDetails(AccountDetails details) => Client.SetAccountDetails(details);
 
-    private void UpdateAvatar()
-    {
-        var bytes = Client.Account?.AvatarPng;
-        if (ReferenceEquals(bytes, avatarBytes)) return;
-        avatarBytes = bytes; Avatar = RobloxAfkManager.App.Controls.AvatarImages.Decode(bytes); Raise(nameof(Avatar));
-    }
-
     private void Refresh()
     {
         clock = DateTimeOffset.UtcNow;
         if (!ReferenceEquals(shownWindow, Client.Window)) { shownWindow = Client.Window; previewRevision++; }
-        UpdateAvatar();
         foreach (var name in Properties) Raise(name);
         // Label is raised only when it really changed: the dashboard recounts its lists when a card's name changes.
         if (shownLabel != Client.Label) { shownLabel = Client.Label; Raise(nameof(Label)); }
     }
     private static readonly string[] Properties =
     [
-        nameof(AccountId), nameof(Session), nameof(ProfileHint), nameof(GameName), nameof(KnownGameName), nameof(SessionStatus), nameof(SessionDuration),
+        nameof(AccountId), nameof(Session), nameof(AvatarPng), nameof(ProfileHint), nameof(GameName), nameof(KnownGameName), nameof(SessionStatus), nameof(SessionDuration),
         nameof(SessionSummary), nameof(SessionHint), nameof(HeadlineStatus), nameof(StatusTone), nameof(NeedsAttention), nameof(SessionNeedsAttention),
         nameof(CustomName), nameof(DetectedName), nameof(NameHint), nameof(AvatarFallback), nameof(ClientDetails),
         nameof(ResourceStatus), nameof(PlanLabel), nameof(Identity), nameof(Title), nameof(Slot), nameof(Memory), nameof(Cpu), nameof(CpuMeter),

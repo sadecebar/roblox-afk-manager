@@ -140,10 +140,9 @@ public partial class MainWindow : Window
         base.OnSourceInitialized(e);
         var handle = new WindowInteropHelper(this).Handle;
         desktopAlerts = new(handle);
-        int enabled = 1;
-        _ = DwmSetWindowAttribute(handle, 20, ref enabled, sizeof(int));
-        int captionColor = 0x000A0707; // COLORREF (BGR) for #07070A, matching the workspace canvas on Windows 11.
-        _ = DwmSetWindowAttribute(handle, 35, ref captionColor, sizeof(int));
+        // The title bar takes the theme's canvas colour.
+        var canvas = (TryFindResource("CanvasBrush") as System.Windows.Media.SolidColorBrush)?.Color ?? System.Windows.Media.Color.FromRgb(0x07, 0x07, 0x0A);
+        WindowChrome.UseDarkTitleBar(handle, canvas.R, canvas.G, canvas.B);
         HwndSource.FromHwnd(handle)?.AddHook(WindowMessage);
     }
     private nint WindowMessage(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
@@ -170,5 +169,4 @@ public partial class MainWindow : Window
         }
         base.OnClosing(e);
     }
-    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
 }

@@ -33,12 +33,9 @@ public sealed class LiveWindowPreview : FrameworkElement
     private (PixelRect Destination, PixelRect Source, bool Visible)? last;
     private bool registrationFailed;
     private string fallback = "Waiting for preview";
-    private static readonly Brush PreviewBackground = FrozenBrush(0x05, 0x05, 0x08);
-    private static readonly Brush PreviewText = FrozenBrush(0x68, 0x68, 0x78);
-    private static Brush FrozenBrush(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b)); brush.Freeze(); return brush;
-    }
+    // Colours come from the theme (Themes/Dark.xaml); the fallbacks only apply outside the app (design tools).
+    private Brush PreviewBackground => TryFindResource("PreviewBackgroundBrush") as Brush ?? Brushes.Black;
+    private Brush PreviewText => TryFindResource("PreviewTextBrush") as Brush ?? Brushes.Gray;
     public bool HasLiveThumbnail => thumbnail != 0;
     public PixelRect? DisplayedBounds => last is { Visible: true } value ? value.Destination : null;
     public PixelRect? DisplayedSourceBounds => last is { Visible: true } value ? value.Source : null;

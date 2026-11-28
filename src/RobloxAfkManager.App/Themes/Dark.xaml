@@ -27,6 +27,16 @@
   <SolidColorBrush x:Key="AlertSoftBrush" Color="#24FF7470" />
   <SolidColorBrush x:Key="AlertTileBrush" Color="#160F13" />
   <SolidColorBrush x:Key="IdleSoftBrush" Color="#1A9A9AAC" />
+  <!-- Card borders by tone, the drop target while dragging cards, live previews and the login window. -->
+  <SolidColorBrush x:Key="WarnTileBorderBrush" Color="#59F4BA5E" />
+  <SolidColorBrush x:Key="AlertTileBorderBrush" Color="#80FF7470" />
+  <SolidColorBrush x:Key="DropTargetTileBrush" Color="#1C1A2E" />
+  <SolidColorBrush x:Key="PreviewBackgroundBrush" Color="#050508" />
+  <SolidColorBrush x:Key="PreviewTextBrush" Color="#686878" />
+  <SolidColorBrush x:Key="LoginBackgroundBrush" Color="#0F1117" />
+  <SolidColorBrush x:Key="LoginTextBrush" Color="#C9CDD6" />
+  <!-- Turns the PNG bytes of an avatar into an image. -->
+  <controls:AvatarImageConverter x:Key="AvatarImage" />
   <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI Variable, Segoe UI</FontFamily>
   <FontFamily x:Key="DisplayFont">Segoe UI Variable Display, Segoe UI Variable, Segoe UI</FontFamily>
   <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>

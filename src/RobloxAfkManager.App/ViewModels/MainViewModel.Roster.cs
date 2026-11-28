@@ -1,10 +1,9 @@
 using System.Collections.ObjectModel;
-using System.Windows.Media;
 using RobloxAfkManager.Core;
 
 namespace RobloxAfkManager.App.ViewModels;
 
-public sealed record OfflineAccountView(long UserId, string Name, string Details, ImageSource? Avatar)
+public sealed record OfflineAccountView(long UserId, string Name, string Details, byte[]? AvatarPng)
 {
     public string AvatarFallback => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
 }
@@ -15,7 +14,7 @@ public sealed partial class MainViewModel
     private static readonly TimeSpan RosterGrace = TimeSpan.FromMinutes(2);
     private readonly DateTimeOffset rosterStarted = DateTimeOffset.UtcNow;
     private IReadOnlySet<long> runningAccounts => work.RunningAccounts;
-    private readonly Dictionary<long, ImageSource> avatarCache = [];
+    private readonly Dictionary<long, byte[]> avatarCache = [];
     public ObservableCollection<OfflineAccountView> OfflineAccounts { get; } = [];
     public AsyncCommand ForgetOfflineCommand { get; private set; } = null!;
     // Right after start, accounts are still being identified, so the count waits instead of flagging everyone.
@@ -42,7 +41,7 @@ public sealed partial class MainViewModel
     private void TrackRoster()
     {
         // The engine tracks which accounts run; the window keeps their last avatar to show them while offline.
-        foreach (var tile in Clients.Where(c => c.AccountId is not null).GroupBy(c => c.AccountId!.Value).Select(g => g.First())) if (tile.Avatar is { } avatar) avatarCache[tile.AccountId!.Value] = avatar;
+        foreach (var tile in Clients.Where(c => c.AccountId is not null).GroupBy(c => c.AccountId!.Value).Select(g => g.First())) if (tile.AvatarPng is { } avatar) avatarCache[tile.AccountId!.Value] = avatar;
         RebuildOffline(DateTimeOffset.UtcNow);
     }
 

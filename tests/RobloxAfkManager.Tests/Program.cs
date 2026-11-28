@@ -109,6 +109,22 @@ internal static class Program
                 Check(bad.Length == 0, $"{assembly.GetName().Name} references {string.Join(", ", bad)}");
             }
         });
+        Test("Architecture: view-models expose no WPF types (images, brushes and colours stay in views and the theme)", () =>
+        {
+            string[] wpf = ["PresentationCore", "PresentationFramework", "WindowsBase", "System.Xaml"];
+            bool IsWpf(Type type) => wpf.Contains(type.Assembly.GetName().Name)
+                || (type.IsGenericType && type.GetGenericArguments().Any(IsWpf)) || (type.HasElementType && IsWpf(type.GetElementType()!));
+            var flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly;
+            var bad = new List<string>();
+            foreach (var type in typeof(RobloxAfkManager.App.ViewModels.MainViewModel).Assembly.GetTypes().Where(t => t.IsPublic && t.Namespace == "RobloxAfkManager.App.ViewModels"))
+            {
+                foreach (var p in type.GetProperties(flags)) if (IsWpf(p.PropertyType)) bad.Add($"{type.Name}.{p.Name}");
+                foreach (var m in type.GetMethods(flags).Where(m => !m.IsSpecialName))
+                    if (IsWpf(m.ReturnType) || m.GetParameters().Any(a => IsWpf(a.ParameterType))) bad.Add($"{type.Name}.{m.Name}()");
+                foreach (var c in type.GetConstructors()) if (c.GetParameters().Any(a => IsWpf(a.ParameterType))) bad.Add($"{type.Name} constructor");
+            }
+            Check(bad.Count == 0, "view-models expose WPF types: " + string.Join(", ", bad));
+        });
         Test("The engine runs with no window: it detects clients, reads their accounts and reports their status as plain data", () =>
         {
             string root = Path.Combine(Path.GetTempPath(), "rafk-engine-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);

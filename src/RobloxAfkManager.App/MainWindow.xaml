@@ -171,7 +171,7 @@
                   <Grid Width="26" Height="26" Margin="0,0,10,0">
                     <Ellipse Fill="{StaticResource HoverBrush}" />
                     <TextBlock Text="{Binding AvatarFallback}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" />
-                    <Ellipse><Ellipse.Fill><ImageBrush ImageSource="{Binding Avatar}" Stretch="UniformToFill" /></Ellipse.Fill></Ellipse>
+                    <Ellipse><Ellipse.Fill><ImageBrush ImageSource="{Binding AvatarPng, Converter={StaticResource AvatarImage}}" Stretch="UniformToFill" /></Ellipse.Fill></Ellipse>
                   </Grid>
                   <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -218,7 +218,7 @@
                   <Grid Width="30" Height="30" Margin="0,0,10,0" VerticalAlignment="Center">
                     <Ellipse Fill="{StaticResource HoverBrush}" />
                     <TextBlock Text="{Binding AvatarFallback}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" />
-                    <Ellipse Opacity="0.55"><Ellipse.Fill><ImageBrush ImageSource="{Binding Avatar}" Stretch="UniformToFill" /></Ellipse.Fill></Ellipse>
+                    <Ellipse Opacity="0.55"><Ellipse.Fill><ImageBrush ImageSource="{Binding AvatarPng, Converter={StaticResource AvatarImage}}" Stretch="UniformToFill" /></Ellipse.Fill></Ellipse>
                     <Ellipse Width="10" Height="10" Fill="{StaticResource WarningBrush}" Stroke="{StaticResource RaisedBrush}" StrokeThickness="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
                   </Grid>
                   <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -511,11 +511,11 @@
         <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
           <Border x:Name="Tile" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="11" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" /></Border>
           <ControlTemplate.Triggers>
-            <DataTrigger Binding="{Binding StatusTone}" Value="Warn"><Setter TargetName="Tile" Property="BorderBrush" Value="#59F4BA5E" /></DataTrigger>
-            <DataTrigger Binding="{Binding StatusTone}" Value="Alert"><Setter TargetName="Tile" Property="BorderBrush" Value="#80FF7470" /><Setter TargetName="Tile" Property="Background" Value="{StaticResource AlertTileBrush}" /></DataTrigger>
+            <DataTrigger Binding="{Binding StatusTone}" Value="Warn"><Setter TargetName="Tile" Property="BorderBrush" Value="{StaticResource WarnTileBorderBrush}" /></DataTrigger>
+            <DataTrigger Binding="{Binding StatusTone}" Value="Alert"><Setter TargetName="Tile" Property="BorderBrush" Value="{StaticResource AlertTileBorderBrush}" /><Setter TargetName="Tile" Property="Background" Value="{StaticResource AlertTileBrush}" /></DataTrigger>
             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Tile" Property="BorderBrush" Value="{StaticResource StrongBorderBrush}" /></Trigger>
             <Trigger Property="IsSelected" Value="True"><Setter TargetName="Tile" Property="BorderBrush" Value="{StaticResource AccentBrush}" /></Trigger>
-            <Trigger Property="controls:WorkspaceAppearance.IsDropTarget" Value="True"><Setter TargetName="Tile" Property="BorderBrush" Value="{StaticResource AccentHoverBrush}" /><Setter TargetName="Tile" Property="Background" Value="#1C1A2E" /></Trigger>
+            <Trigger Property="controls:WorkspaceAppearance.IsDropTarget" Value="True"><Setter TargetName="Tile" Property="BorderBrush" Value="{StaticResource AccentHoverBrush}" /><Setter TargetName="Tile" Property="Background" Value="{StaticResource DropTargetTileBrush}" /></Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate></Setter.Value></Setter>
       </Style></ListBox.ItemContainerStyle>
@@ -547,7 +547,7 @@
               <Grid Width="34" Height="34" Margin="0,0,9,0" Style="{StaticResource CardDetail}" ToolTip="{Binding HeadlineStatus}">
                 <Ellipse Width="32" Height="32" Fill="{StaticResource HoverBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" />
                 <TextBlock Text="{Binding AvatarFallback}" Width="32" Height="32" HorizontalAlignment="Left" VerticalAlignment="Top" TextAlignment="Center" Padding="0,8,0,0" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" />
-                <Ellipse Width="32" Height="32" HorizontalAlignment="Left" VerticalAlignment="Top"><Ellipse.Fill><ImageBrush ImageSource="{Binding Avatar}" Stretch="UniformToFill" /></Ellipse.Fill></Ellipse>
+                <Ellipse Width="32" Height="32" HorizontalAlignment="Left" VerticalAlignment="Top"><Ellipse.Fill><ImageBrush ImageSource="{Binding AvatarPng, Converter={StaticResource AvatarImage}}" Stretch="UniformToFill" /></Ellipse.Fill></Ellipse>
                 <Ellipse Width="11" Height="11" Stroke="{StaticResource PanelBrush}" StrokeThickness="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Style="{StaticResource StatusDot}" />
               </Grid>
               <Border Style="{StaticResource DenseOnly}" VerticalAlignment="Center" Margin="1,0,6,0" ToolTip="{Binding HeadlineStatus}">
