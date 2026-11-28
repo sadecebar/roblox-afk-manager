@@ -90,8 +90,8 @@ public partial class MainWindow : Window
     private void ClearBoardChannel_Click(object sender, RoutedEventArgs e) => viewModel.ClearBoardChannel();
     private void ClearDiscord_Click(object sender, RoutedEventArgs e) { DiscordUserBox.Clear(); viewModel.ClearDiscord(); }
     private bool ConfirmResetServers(int count) => MessageBox.Show(this,
-        $"This closes {count} account(s) that have a saved login, waits one minute so the private servers empty and reset, then rejoins every saved account one at a time.\n\nClients that are ignored or have no saved login stay open, and a private server with someone still in it will not reset.\n\nContinue?",
-        "Reset servers", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+        $"This closes ALL {count} running account(s) that have a saved login, even the healthy ones.\n\nIt then waits one minute so the private servers empty and reset, and opens every saved account again, one at a time.\n\nClients that are ignored or have no saved login stay open, and a private server with someone still in it will not reset.\n\nAre you sure?",
+        "Reset servers", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
     private void Backup_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Back up manager settings", FileName = "RobloxAfkManager-settings.json", Filter = "Settings backup (*.json)|*.json" };

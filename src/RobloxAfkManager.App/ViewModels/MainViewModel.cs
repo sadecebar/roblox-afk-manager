@@ -63,7 +63,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         IAccountLauncher? accountLauncher = null, LoginVault? loginVault = null, string? settingsFolder = null, DiscordWebhook? discordWebhook = null, IUserIdle? userIdle = null)
     {
         log = appLog ?? new FileLog(); windows = windowSystem ?? new Win32WindowSystem(log); manager = new(windows, log);
-        accountNames = accountNameLookup ?? (windows is Win32WindowSystem ? new LogAccountNameLookup() : null);
+        accountNames = accountNameLookup ?? (windows is Win32WindowSystem ? new LogAccountNameLookup(stateFile: System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "process-accounts.txt")) : null);
         clientNames = clientNameStore ?? (windows is Win32WindowSystem ? new ClientNameStore() : new MemoryClientNameStore());
         Remote = new(windows.IsCurrent, log);
         resources = new(resourceSystem ?? new Win32ProcessResources(), log);

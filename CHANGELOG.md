@@ -1,18 +1,28 @@
 # Changelog
 
-## Unreleased
+## v0.13.0: Private servers, Rejoin all, Reset servers and reliable restarts
+
+Released 2026-11-28. Accounts are split over two private servers and fall back to the other server or the public game when one is full. Restarts and Rejoin all work again after Roblox started leaving hidden background processes behind.
 
 ### Private servers, Rejoin all and Reset servers
 - **Two private servers, split exactly.** Paste two `roblox.com/share?code=…&type=Server` links in Settings → Accounts. With 12 accounts and "Accounts on private server 1" set to 6, six go to each server. Each account is given its server once, in dashboard order, and keeps it, so restarting, reopening or reordering cards never moves an account and a server never ends up over its limit. **Split accounts again** starts over from the current order. An account added later fills server 1 until it has its share. With only one link set, every account joins it.
 - **Rejoin all** (button next to Refresh) opens every saved account that is not running, one at a time, each on its own server. It is available whenever at least one account is missing.
 - **Reset servers** (Settings → Accounts) closes every running account with a saved login, waits one minute after the last one has left so the private servers empty and reset, then rejoins all accounts. It asks first, checks every login and link before closing anything, and raises no false alerts for the windows it closes. Ignored clients and clients without a saved login stay open, and a server with someone still in it will not reset (the activity log says so).
-- **If a private server can't be joined, the account joins the public server instead.** A client started for a private server that still hasn't joined after 3 minutes (it is full and waiting in line, or something is wrong with the link) is closed and started on the game's public server. A private server link that Roblox rejects does the same at once. What happened is written to Activity, the incident log and the Discord channel (orange, no ping), saying which private server failed and why. That account stays public for 30 minutes, then tries its private server again; Reset servers and Split accounts again also reset it.
+- **If a private server is full, the account tries the other one, then the public game.** A client that has not got into its private server after 2 minutes (full and waiting in line, or a problem with the link) is closed and started on the other private server; if it is stuck there too it joins the game's public server. A link that Roblox rejects moves on at once. A restart, reopen or Rejoin always tries the account's own private server first again. Every step is written to Activity, the incident log and the Discord channel (orange, no ping), saying which server failed and why.
 - **Launches never overlap.** Every launch, from any button or automatic fix, waits until the previous one finished and the "Seconds between accounts" gap (5 to 120 seconds, 10 by default) has passed, and checks again that the account is not already running or still loading.
 
 ### Fixes: accounts restarting over and over
 - **Healthy accounts were being restarted as "login lost".** The login check counted every HTTP 401 in the Roblox log. In an event game a healthy client gets a 401 from `apis.roblox.com` (event polling) every few seconds, which looked like a lost login. Those game-feature 401s are ignored now, and an account is not login-restarted within 10 minutes of being started or while it has two windows.
 - **An account that is still loading is never started a second time.** A private server join can queue for minutes; after 3 minutes the manager used to treat the account as gone and start a duplicate, and the two windows kicked each other ("joined from another device"). A launched client that is still loading now counts as running for up to 15 minutes.
 - **A second window of the same account is closed, not restarted.** If one window shows "joined from another device" while another window of that account is fine, the disconnected one is closed and the healthy one is left alone.
+
+### Fixes: clients that were not recognised or not restarted
+- **Restart / reopen failing with "Roblox didn't open a new window".** Roblox leaves a hidden background process behind whenever a client exits. A client started afterwards tried to hand its launch to it, failed and exited at once. The manager now closes those idle background processes (no window, small memory, older than 45 seconds) before every launch.
+- **"Connection Failed (error 279)" is now seen as a disconnect.** Roblox retries a lost connection by itself and writes a new join line, which made the tile look joined; the "Failed to connect to server" line that follows is now read as a disconnect, so Auto-reopen restarts the client.
+- **Accounts whose first join is far into a long log, or whose log was deleted by Roblox, are recognised.** The account is also read from the join lines of the whole log, and a recognised window keeps its account for as long as it runs.
+- **Auto-reopen restarts a disconnected client after 2 minutes** (was 5).
+- **Rejoin all only opens accounts that are really closed.** It first reads the account of any window that is not identified yet, skips an account that became active while it was working, and no longer waits out the launch gap for it.
+- **Reset servers is also a toolbar button** (next to Rejoin all). It is always clickable, says why if it cannot run right now, asks first with "No" as the default, then closes every running account, waits 1 minute and opens them all again.
 
 ## v0.12.0: Several clients at once, disconnect detection and restart, incident log
 

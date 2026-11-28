@@ -102,6 +102,7 @@ public sealed class AccountLauncher : IAccountLauncher, IDisposable
     // Starts one account and returns the new client's process id. Only "Roblox never started" is an error.
     public async Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null)
     {
+        CloseIdleBackgroundClients();
         var before = RobloxProcessIds();
         // Running clients must not hear the new client's start signal, so close their singleton event first.
         if (before.Length > 0) RobloxSingleton.Release();
@@ -121,6 +122,29 @@ public sealed class AccountLauncher : IAccountLauncher, IDisposable
             if (!RobloxProcessIds().Contains(fresh[0])) throw new InvalidOperationException(Blocked);
         }
         return fresh[0];
+    }
+
+    // Roblox leaves a hidden background process behind every time a client exits (started with --launch-to-tray). It has no window and
+    // holds almost no memory. A client started afterwards tries to hand its launch to it, fails ("SingleInstanceGuard", error 1400) and
+    // exits at once, which is the "didn't open a new window" failure. They are closed before each launch. Anything with a window,
+    // anything big enough to be a running game, and anything started in the last minute (a client still opening) is left alone.
+    private static readonly TimeSpan BackgroundClientAge = TimeSpan.FromSeconds(45);
+    private const long BackgroundClientMemory = 400L * 1024 * 1024;
+
+    public static int CloseIdleBackgroundClients()
+    {
+        int closed = 0;
+        foreach (var process in Process.GetProcessesByName("RobloxPlayerBeta"))
+            using (process)
+            {
+                try
+                {
+                    if (process.MainWindowHandle != IntPtr.Zero || process.WorkingSet64 >= BackgroundClientMemory || DateTime.Now - process.StartTime < BackgroundClientAge) continue;
+                    process.Kill(); closed++;
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException) { /* it is already gone, or not ours to close */ }
+            }
+        return closed;
     }
 
     private static int[] RobloxProcessIds()

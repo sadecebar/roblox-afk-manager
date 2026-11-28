@@ -42,6 +42,19 @@ internal static class AccountNameTests
             Program.Check(resolver.ResolveAsync([process with { StartTimeUtcTicks = process.StartTimeUtcTicks + 1 }], default).GetAwaiter().GetResult().Count == 0);
             Program.Check(requests == 1, "Ambiguous or stale process triggered a lookup");
         });
+        test("Roblox retrying a lost connection by itself and then failing (error 279) counts as disconnected", () =>
+        {
+            using var fixture = new NameFixture(); var process = new ProcessIdentity(123, DateTime.UtcNow.AddHours(-1).Ticks);
+            string Stamp(int minutesAgo) => DateTime.UtcNow.AddMinutes(-minutesAgo).ToString("O");
+            File.WriteAllText(fixture.Log, JoinLine(77) + "\n"
+                + Stamp(20) + ",1,abc,7,Warning [FLog::Network] Lost connection with reason : Lost connection to the game server, please reconnect\n"
+                + Stamp(20) + ",1,abc,6 [FLog::GameJoinLoadTime] Report game_join_loadtime: placeid:8, join_time:0, universeid:18, referral_page:, userid:77, \n"
+                + Stamp(19) + ",1,abc,6,Error [DFLog::NetworkClient] Failed to connect to server at 3.127.66.68|53058, no response.\n");
+            var resolver = new LogAccountNameLookup(fixture.Directory, _ => [process], (ids, _) => Task.FromResult<IReadOnlyDictionary<long, string>>(new Dictionary<long, string> { [77] = "Fixture" }));
+            var seen = resolver.ResolveDetailsAsync([process], default).GetAwaiter().GetResult()[process].Session;
+            Program.Check(seen.Phase == SessionPhase.Disconnected, "the failed retry was shown as joined: " + seen.Phase);
+            Program.Check(seen.Reason is { } why && why.Contains("no response") && !why.Contains("3.127"), "reason missing or leaks the server address");
+        });
         test("A disconnect in the middle of a huge log is still found, and a later rejoin replaces it", () =>
         {
             using var fixture = new NameFixture(); var process = new ProcessIdentity(123, DateTime.UtcNow.AddHours(-1).Ticks);

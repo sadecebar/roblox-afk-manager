@@ -10,7 +10,8 @@ namespace RobloxAfkManager.App.ViewModels;
 public sealed partial class MainViewModel
 {
     private sealed record StoredServers(string? Server1, string? Server2, int FirstCount, Dictionary<long, int>? Assignments = null, long Place = 0);
-    private sealed record LaunchPlan(long PlaceId, string? LinkCode, int Server);
+    // Stage: 0 = the account's own private server, 1 = the other private server, 2 = the public game.
+    private sealed record LaunchPlan(long PlaceId, string? LinkCode, int Server, int Stage = 0);
     private static readonly TimeSpan ResolvedServerLife = TimeSpan.FromMinutes(30);
 
     private string? serverCode1, serverCode2;
@@ -48,7 +49,7 @@ public sealed partial class MainViewModel
         if (string.IsNullOrWhiteSpace(value)) { field = null; Warning = false; Message = $"Private server {number} link removed."; }
         else if (PrivateServerLink.ParseCode(value) is { } code) { field = code; Warning = false; Message = $"Private server {number} saved."; }
         else { Warning = true; Message = "That isn't a private server share link (it looks like roblox.com/share?code=…&type=Server)."; RaiseServers(); return; }
-        resolvedServers.Clear(); privateFailedAt.Clear(); SaveServers(); RaiseServers(); RefreshLogins();
+        resolvedServers.Clear(); SaveServers(); RaiseServers(); RefreshLogins();
     }
 
     private void InitializeServers()
@@ -105,7 +106,7 @@ public sealed partial class MainViewModel
     // Starts the split over from the dashboard order as it is now.
     private void ResplitAccounts()
     {
-        serverAssignments.Clear(); privateFailedAt.Clear(); Assignments(commit: true); RaiseServers(); RefreshLogins();
+        serverAssignments.Clear(); Assignments(commit: true); RaiseServers(); RefreshLogins();
         var counts = serverAssignments.Values.GroupBy(v => v).ToDictionary(g => g.Key, g => g.Count());
         Warning = false; Message = $"Accounts split again: {counts.GetValueOrDefault(1)} on private server 1, {counts.GetValueOrDefault(2)} on private server 2.";
     }
@@ -119,35 +120,43 @@ public sealed partial class MainViewModel
         return Assignments(commit).GetValueOrDefault(userId, 2);
     }
 
-    // Where this account should go. Asks Roblox to resolve a private server's share link the first time (and every 30 minutes).
-    private async Task<LaunchPlan> PlanLaunchAsync(long userId, string cookie)
+    // Where this account should go. Every launch starts at stage 0, the account's own private server, so a restart or reopen always tries
+    // it first. Only the check for a client stuck in a full server asks for a later stage: the other private server, then the public game.
+    // Asks Roblox to resolve a private server's share link the first time (and every 30 minutes).
+    private async Task<LaunchPlan> PlanLaunchAsync(long userId, string cookie, int stage = 0)
     {
-        int server = ServerNumberFor(userId, commit: true);
-        if (server == 0)
+        int assigned = ServerNumberFor(userId, commit: true);
+        if (assigned == 0)
         {
-            if (gamePlaceId > 0) return new(gamePlaceId, null, 0);
+            if (gamePlaceId > 0) return new(gamePlaceId, null, 0, 2);
             throw new InvalidOperationException("Set a game or a private server link first (Settings → Accounts).");
         }
-        string code = (server == 1 ? serverCode1 : serverCode2)!;
-        var now = DateTimeOffset.UtcNow;
-        // After a private join failed for this account it joins the game's public server for a while instead of trying again.
-        if (FallbackPlace > 0 && UsePublicFor(userId, now)) return new(FallbackPlace, null, 0);
-        if (!resolvedServers.TryGetValue(code, out var known) || now - known.At > ResolvedServerLife)
+        Exception? failure = null;
+        for (; stage < 2; stage++)
         {
-            try
+            int server = stage == 0 ? assigned : 3 - assigned;
+            string? code = server == 1 ? serverCode1 : serverCode2;
+            if (code is null) continue;
+            var now = DateTimeOffset.UtcNow;
+            if (!resolvedServers.TryGetValue(code, out var known) || now - known.At > ResolvedServerLife)
             {
-                var resolved = await launcher.ResolveShareLinkAsync(cookie, code, CancellationToken.None);
-                resolvedServers[code] = known = (resolved, now);
-                if (lastKnownPlace != resolved.PlaceId) { lastKnownPlace = resolved.PlaceId; SaveServers(); }
+                try
+                {
+                    var resolved = await launcher.ResolveShareLinkAsync(cookie, code, CancellationToken.None);
+                    resolvedServers[code] = known = (resolved, now);
+                    if (lastKnownPlace != resolved.PlaceId) { lastKnownPlace = resolved.PlaceId; SaveServers(); }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failure = ex;
+                    AddActivity(NameOf(userId), $"Could not use private server {server}: {ex.Message} Fix: trying the next option.", true, announce: true, quiet: true);
+                    continue;
+                }
             }
-            catch (Exception ex) when (FallbackPlace > 0 && ex is not OperationCanceledException)
-            {
-                privateFailedAt[userId] = now;
-                AddActivity(NameOf(userId), $"Could not use private server {server}: {ex.Message} Fix: it joins the public server of the game instead, and tries the private server again in {(int)PublicFallbackLife.TotalMinutes} minutes.", true, announce: true, quiet: true);
-                return new(FallbackPlace, null, 0);
-            }
+            return new(known.Server.PlaceId, known.Server.LinkCode, server, stage);
         }
-        return new(known.Server.PlaceId, known.Server.LinkCode, server);
+        if (FallbackPlace > 0) return new(FallbackPlace, null, 0, 2);
+        throw failure ?? new InvalidOperationException("No private server could be used. Set a game link in Settings → Accounts as a fallback.");
     }
 
     // Two accounts that start at the same moment can get mixed up in the game (one is logged in as the other), so every
@@ -165,22 +174,27 @@ public sealed partial class MainViewModel
             if (!replacing && IsActive(account, DateTimeOffset.UtcNow)) throw new InvalidOperationException("It is already running or still starting, so it was not started a second time.");
             int started = await launcher.LaunchSafelyAsync(cookie, plan.PlaceId, CancellationToken.None, ticket, plan.LinkCode);
             if (plan.LinkCode is not null) launchedPrivate.Add(account); else launchedPrivate.Remove(account);
+            launchedStage[account] = plan.Stage;
             return started;
         }
         finally { lastLaunchEnd = DateTimeOffset.UtcNow; launchGate.Release(); }
     }
 
-    private bool CanResetServers() => HasLaunchTarget && !launching && !recovering && !reopening && !Busy && !disposed
-        && Clients.Any(c => !c.IsIgnored && c.AccountId is { } id && vault.Logins.Any(l => l.UserId == id));
+    // The button stays clickable whenever there are saved accounts, so it never looks broken; if it cannot run right now it says why.
+    private bool CanResetServers() => !disposed && vault.Logins.Count > 0;
 
     private async Task ResetServersAsync()
     {
-        if (!CanResetServers()) return;
+        if (disposed) return;
+        if (launching || recovering || reopening) { Warning = true; Message = "Accounts are being opened or restarted right now. Wait until that has finished, then press Reset servers again."; return; }
+        if (!HasLaunchTarget) { Warning = true; Message = "Paste a game link or a private server link first (Settings → Accounts)."; return; }
+        await SettleAccountsAsync();
         var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
         var candidates = Clients.Where(c => !c.IsIgnored && c.AccountId is { } id && saved.Contains(id))
             .Select(c => (Id: c.AccountId!.Value, c.Label, c.Identity)).ToArray();
+        if (candidates.Length == 0) { Warning = true; Message = "Reset servers did nothing: no running account with a saved login was found."; return; }
         if (ConfirmReset is { } ask && !ask(candidates.Length)) return;
-        launching = true; privateFailedAt.Clear(); RaiseServers();
+        launching = true; RaiseServers();
         var targets = new List<(long Id, string Label, WindowIdentity Identity)>(); var skipped = new List<string>();
         try
         {

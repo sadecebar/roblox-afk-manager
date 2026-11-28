@@ -141,6 +141,9 @@
         <Button x:Name="RejoinAllButton" Command="{Binding OpenClosedCommand}" Style="{StaticResource ToolbarButton}" Margin="0,0,6,0" ToolTip="Opens every saved account that is not running, one at a time, on its own server. Available when at least one account is missing." AutomationProperties.Name="Rejoin all missing accounts">
           <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE777;" Style="{StaticResource Glyph}" Margin="0,0,8,0" /><TextBlock Text="Rejoin all" VerticalAlignment="Center" /></StackPanel>
         </Button>
+        <Button x:Name="ResetServersButton" Command="{Binding ResetServersCommand}" Style="{StaticResource ToolbarButton}" Margin="0,0,6,0" ToolTip="Closes every running account, even healthy ones, waits 1 minute so the private servers reset, then opens them all again. Asks first." AutomationProperties.Name="Reset servers">
+          <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" Margin="0,0,8,0" /><TextBlock Text="Reset servers" VerticalAlignment="Center" /></StackPanel>
+        </Button>
         <Button x:Name="RestoreWindowsButton" Command="{Binding PrepareDashboardCommand}" Style="{StaticResource CompactPrimaryButton}" ToolTip="Restore minimized included clients. Existing window sizes and positions stay the same." AutomationProperties.Name="Restore minimized clients">
           <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8A7;" Style="{StaticResource Glyph}" FontSize="13" Margin="0,0,8,0" /><TextBlock Text="Restore windows" VerticalAlignment="Center" /></StackPanel>
         </Button>

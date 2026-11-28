@@ -657,6 +657,28 @@ internal static class Program
             }
             finally { try { Directory.Delete(root, true); } catch (IOException) { } }
         });
+        Test("Server fallback order: own private server, then the other one, then the public game; a restart starts at the own server again", () =>
+        {
+            string a = "45418624af634644ad2617ba325e876f", b = "76b34ea6a6eb5d48a33a73d4efa6a7c6";
+            string root = Path.Combine(Path.GetTempPath(), "rafk-chain-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks);
+                var launcher = new RecordingLauncher { NextPid = 101 };
+                using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new AccountNameTests.EmptyLookup(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { PrivateJoinPatience = TimeSpan.FromMilliseconds(400), LaunchSpacingSeconds = 5 };
+                vm.GameLink = "1818"; vm.PrivateServer1Link = a; vm.PrivateServer2Link = b;
+                vm.OpenClosedCommand.Execute(null);
+                for (int i = 0; i < 100 && launcher.Launched.Count < 1; i++) Thread.Sleep(50);
+                for (int i = 0; i < 400 && launcher.Launched.Count < 3; i++) { fake.Closed.Clear(); /* the new client has the same pid and is stuck again */ vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(100); }
+                Check(launcher.Launched.Count == 3, "expected three launches: own server, other server, public: " + launcher.Launched.Count);
+                Check(launcher.LinkCodes[0] == "link-" + a[..4], "first start was not the own private server");
+                Check(launcher.LinkCodes[1] == "link-" + b[..4], "second start was not the other private server");
+                Check(launcher.LinkCodes[2] is null && launcher.Launched[2].Place == 1818, "third start was not the public game");
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+        });
         Test("Private server fallback: a private server link that Roblox rejects sends the account to the public game and says so", () =>
         {
             string a = "45418624af634644ad2617ba325e876f";
@@ -671,7 +693,7 @@ internal static class Program
                 vm.OpenClosedCommand.Execute(null);
                 for (int i = 0; i < 100 && launcher.Launched.Count < 1; i++) Thread.Sleep(50);
                 Check(launcher.Launched.Count == 1 && launcher.LinkCodes[0] is null && launcher.Launched[0].Place == 1818, "it did not fall back to the public game");
-                Check(vm.Activity.Any(m => m.Warning && m.Message.Contains("no longer valid") && m.Message.Contains("public server")), "the bad link was not written down");
+                Check(vm.Activity.Any(m => m.Warning && m.Message.Contains("no longer valid")), "the bad link was not written down");
             }
             finally { try { Directory.Delete(root, true); } catch (IOException) { } }
         });

@@ -118,11 +118,15 @@ public static partial class SessionLogParser
             // connection ends (error prompts such as 257). A client that reconnects reports a new join, which replaces this phase.
             else if (tag == "Network" && IsDisconnectMessage(message))
             { phase = SessionPhase.Disconnected; last = at; reason = ReadReason(message) ?? reason; }
+            // Roblox retries a lost connection by itself: it reports a new join, then gives up here (the "Connection Failed" prompt, error 279).
+            else if (tag == "NetworkClient" && IsConnectFailure(message))
+            { phase = SessionPhase.Disconnected; last = at; reason = "Failed to connect to the server (no response)"; }
             else if (tag == "GameJoinUtil" && message.StartsWith("GameJoinUtil::joinGamePostStandard:", StringComparison.Ordinal))
             { phase = SessionPhase.Joining; joined = null; place = universe = null; last = at; reason = null; }
         }
         return new(user, place, universe, phase, joined, last, checkedAt, authFailures, phase == SessionPhase.Disconnected ? reason : null);
     }
+    private static bool IsConnectFailure(string message) => message.StartsWith("Failed to connect to server at", StringComparison.Ordinal);
     private static bool IsDisconnectMessage(string message) =>
         message.StartsWith("Client:Disconnect", StringComparison.Ordinal) || message.StartsWith("Connection lost:", StringComparison.Ordinal)
         || message.StartsWith("Lost connection with reason", StringComparison.Ordinal) || message.StartsWith("Client has been disconnected with reason", StringComparison.Ordinal);
@@ -131,7 +135,7 @@ public static partial class SessionLogParser
     // from a log that is tens of megabytes of game output, so an event from an hour ago is not missed.
     public static bool IsSessionMarker(string line)
     {
-        if (!line.Contains("[FLog::", StringComparison.Ordinal)) return false;
+        if (!line.Contains("[FLog::", StringComparison.Ordinal) && !line.Contains("[DFLog::NetworkClient]", StringComparison.Ordinal)) return false;
         var marker = Marker().Match(line);
         if (!marker.Success) return false;
         string tag = marker.Groups[2].Value, message = marker.Groups[3].Value.Trim();
@@ -140,6 +144,7 @@ public static partial class SessionLogParser
             "GameJoinLoadTime" => message.StartsWith("Report game_join_loadtime:", StringComparison.Ordinal),
             "Network" => IsDisconnectMessage(message),
             "GameJoinUtil" => message.StartsWith("GameJoinUtil::joinGamePostStandard:", StringComparison.Ordinal),
+            "NetworkClient" => IsConnectFailure(message),
             _ => false
         };
     }
@@ -153,7 +158,7 @@ public static partial class SessionLogParser
         if (text.Length == 0) return null;
         return text.Length <= 120 ? text : text[..119] + "…";
     }
-    [GeneratedRegex(@"^\s*(\d{4}-\d{2}-\d{2}T[^,\s]+),[^\r\n\[]*\[FLog::(GameJoinLoadTime|Network|GameJoinUtil)\]\s*(.*)$", RegexOptions.CultureInvariant, 100)]
+    [GeneratedRegex(@"^\s*(\d{4}-\d{2}-\d{2}T[^,\s]+),[^\r\n\[]*\[(?:FLog|DFLog)::(GameJoinLoadTime|Network|GameJoinUtil|NetworkClient)\]\s*(.*)$", RegexOptions.CultureInvariant, 100)]
     private static partial Regex Marker();
     // The engine tag must be the line's first tag, so text a game prints can't imitate it.
     [GeneratedRegex(@"^\s*(\d{4}-\d{2}-\d{2}T[^,\s]+),[^\r\n\[]*\[DFLog::HttpTraceError\][^\r\n]*\bstatus:401\b", RegexOptions.CultureInvariant, 100)]

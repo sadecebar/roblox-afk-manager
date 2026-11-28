@@ -188,7 +188,27 @@ public sealed partial class MainViewModel
     private bool HasLoadingClient(long userId) =>
         launchedPids.Any(p => p.Value == userId && Clients.Any(c => c.ProcessId == p.Key && c.AccountId is null));
 
-    private Task OpenClosedAsync() => LaunchAsync(vault.Logins.Where(l => !IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray());
+    // A window whose account is not known yet (the manager only just started, or Roblox just opened it) would look like a closed account.
+    // Before deciding what is closed, windows that are still unidentified get their account read once more.
+    private async Task SettleAccountsAsync()
+    {
+        if (accountNames is null) return;
+        bool Unknown() => Clients.Any(c => !c.IsIgnored && c.AccountId is null && !launchedPids.ContainsKey(c.ProcessId));
+        for (int round = 0; round < 3 && Unknown(); round++)
+        {
+            for (int wait = 0; wait < 100 && (Busy || resolvingNames); wait++) await Task.Delay(100);
+            await RefreshAsync();
+            nextNameRefresh = DateTimeOffset.MinValue;
+            await RefreshAccountNamesAsync();
+        }
+    }
+
+    private async Task OpenClosedAsync()
+    {
+        if (launching) return;
+        await SettleAccountsAsync();
+        await LaunchAsync(vault.Logins.Where(l => !IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray());
+    }
 
     private Task OpenSelectedAsync() => LaunchAsync(vault.Logins.Where(l => selectedLogins.Contains(l.UserId) && !IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray());
 
@@ -201,6 +221,8 @@ public sealed partial class MainViewModel
         int opened = 0; var failures = new List<string>();
         foreach (var login in targets)
         {
+            // Became active since the list was made (opened by something else): skipped at once, without waiting for the launch gap.
+            if (replacing?.Contains(login.UserId) != true && IsActive(login.UserId, DateTimeOffset.UtcNow)) continue;
             Warning = false; Message = $"Opening {login.Username} ({opened + 1} of {targets.Length})…";
             try
             {
