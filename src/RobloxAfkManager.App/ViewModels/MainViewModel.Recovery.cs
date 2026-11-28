@@ -40,7 +40,7 @@ public sealed partial class MainViewModel
             var identity = tile.Identity;
             var closed = await Task.Run(() => manager.CloseClient(identity));
             if (!closed.Success) throw new InvalidOperationException(closed.Message);
-            int pid = await LaunchOneAsync(cookie, plan, ticket);
+            int pid = await LaunchOneAsync(cookie, plan, ticket, account, replacing: true);
             launchedPids[pid] = account; launchedAt[account] = DateTimeOffset.UtcNow;
             AddActivity(label, "You restarted this account. Closed the client and reopened it from its saved login.", false, announce: false, info: true);
             Warning = false; Message = $"{label} was restarted.";
@@ -76,7 +76,9 @@ public sealed partial class MainViewModel
         var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
         var victim = Clients.FirstOrDefault(c => !c.IsIgnored && c.AccountId is { } id && saved.Contains(id)
             && (c.Session is { AuthFailures: >= AuthFailureThreshold } || (AutoRestartQuiet && c.IsQuiet))
-            && !(recoveredAt.TryGetValue(id, out var at) && now - at < RecoveryCooldown));
+            && !(recoveredAt.TryGetValue(id, out var at) && now - at < RecoveryCooldown)
+            && !(launchedAt.TryGetValue(id, out var launched) && now - launched < TimeSpan.FromMinutes(10)) // a fresh client is still settling
+            && Clients.Count(o => o.AccountId == id) == 1);                                                  // two windows: see CloseDuplicateWindowsAsync
         if (victim?.AccountId is not { } account) return;
         bool quiet = victim.Session is not { AuthFailures: >= AuthFailureThreshold };
         while (recoveryLog.Count > 0 && now - recoveryLog.Peek() > TimeSpan.FromHours(1)) recoveryLog.Dequeue();
@@ -98,7 +100,7 @@ public sealed partial class MainViewModel
             var identity = victim.Identity;
             var closed = await Task.Run(() => manager.CloseClient(identity));
             if (!closed.Success) throw new InvalidOperationException(closed.Message);
-            int pid = await LaunchOneAsync(cookie, plan, ticket);
+            int pid = await LaunchOneAsync(cookie, plan, ticket, account, replacing: true);
             launchedPids[pid] = account; launchedAt[account] = DateTimeOffset.UtcNow;
             AddActivity(label, quiet ? "Stopped doing anything for 10 minutes (probably stuck on an error box). Fix: closed the client and restarted it from its saved login."
                 : "Roblox ended this account's login. Fix: closed the client and restarted it from its saved login.", false, info: true);

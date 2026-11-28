@@ -153,15 +153,15 @@ public sealed partial class MainViewModel
     private void RefreshLogins()
     {
         var now = DateTimeOffset.UtcNow;
-        var positions = ServerPositions();
+        var servers = serverCode1 is not null && serverCode2 is not null ? Assignments(commit: false) : null;
         SavedLogins.Clear();
         foreach (var login in vault.Logins.OrderBy(l => l.Username, StringComparer.OrdinalIgnoreCase))
         {
             bool running = runningAccounts.Contains(login.UserId);
             bool starting = !running && launchedAt.TryGetValue(login.UserId, out var at) && now - at < LaunchGrace;
-            SavedLogins.Add(new(login.UserId, login.Username, running || starting, (running ? "Running" : starting ? "Starting…" : "Closed") + (ServerNumberFor(login.UserId, positions) is > 0 and var server ? $" · server {server}" : ""), selectedLogins.Contains(login.UserId), OnSelected));
+            SavedLogins.Add(new(login.UserId, login.Username, running || starting, (running ? "Running" : starting ? "Starting…" : "Closed") + (servers is not null ? $" · server {servers.GetValueOrDefault(login.UserId, 2)}" : serverCode1 is not null || serverCode2 is not null ? $" · server {(serverCode1 is not null ? 1 : 2)}" : ""), selectedLogins.Contains(login.UserId), OnSelected));
         }
-        Raise(nameof(ClosedLoginCount)); Raise(nameof(HasClosedLogins)); Raise(nameof(OpenClosedLabel)); Raise(nameof(SelectedCount)); Raise(nameof(OpenSelectedLabel)); OpenClosedCommand?.Notify(); OpenSelectedCommand?.Notify(); OpenLoginCommand?.Notify(); ReconnectAllCommand?.Notify();
+        Raise(nameof(ClosedLoginCount)); Raise(nameof(HasClosedLogins)); Raise(nameof(OpenClosedLabel)); Raise(nameof(SelectedCount)); Raise(nameof(OpenSelectedLabel)); OpenClosedCommand?.Notify(); OpenSelectedCommand?.Notify(); OpenLoginCommand?.Notify(); ResetServersCommand?.Notify();
     }
 
     // Called from the UI with the pasted cookie; the cookie is never kept in memory beyond this call.
@@ -180,7 +180,13 @@ public sealed partial class MainViewModel
         catch (Exception ex) { HandleError(ex); return false; }
     }
 
-    private bool IsActive(long userId, DateTimeOffset now) => runningAccounts.Contains(userId) || (launchedAt.TryGetValue(userId, out var at) && now - at < LaunchGrace);
+    // Running, just started, or started a while ago and still loading (a private server join can queue for minutes). A second
+    // client for the same account would knock the first one off ("joined from another device"), so none is started.
+    private static readonly TimeSpan LoadingLife = TimeSpan.FromMinutes(15);
+    private bool IsActive(long userId, DateTimeOffset now) => runningAccounts.Contains(userId)
+        || (launchedAt.TryGetValue(userId, out var at) && (now - at < LaunchGrace || (now - at < LoadingLife && HasLoadingClient(userId))));
+    private bool HasLoadingClient(long userId) =>
+        launchedPids.Any(p => p.Value == userId && Clients.Any(c => c.ProcessId == p.Key && c.AccountId is null));
 
     private Task OpenClosedAsync() => LaunchAsync(vault.Logins.Where(l => !IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray());
 
@@ -189,29 +195,34 @@ public sealed partial class MainViewModel
     private Task OpenOneAsync(object? parameter) =>
         parameter is SavedLoginView view && vault.Logins.FirstOrDefault(l => l.UserId == view.UserId) is { } login ? LaunchAsync([login]) : Task.CompletedTask;
 
+    // Opens the accounts one at a time and reports what happened. The caller owns the "launching" flag.
+    private async Task<(int Opened, List<string> Failures)> LaunchCoreAsync(SavedLogin[] targets, ISet<long>? replacing = null)
+    {
+        int opened = 0; var failures = new List<string>();
+        foreach (var login in targets)
+        {
+            Warning = false; Message = $"Opening {login.Username} ({opened + 1} of {targets.Length})…";
+            try
+            {
+                string cookie = vault.Cookie(login.UserId) ?? throw new InvalidOperationException("The saved login could not be read.");
+                var plan = await PlanLaunchAsync(login.UserId, cookie);
+                int pid = await LaunchOneAsync(cookie, plan, null, login.UserId, replacing?.Contains(login.UserId) == true);
+                launchedPids[pid] = login.UserId;
+                launchedAt[login.UserId] = DateTimeOffset.UtcNow; opened++; RefreshLogins();
+            }
+            catch (Exception ex) { failures.Add($"{login.Username}: {ex.Message}"); log.Write($"Launching account {login.UserId} failed.", ex); }
+        }
+        return (opened, failures);
+    }
+
     private async Task LaunchAsync(SavedLogin[] targets)
     {
         if (launching) return;
         if (!HasLaunchTarget) { Warning = true; Message = "Paste a game link or a private server link first (Settings → Accounts)."; return; }
         if (targets.Length == 0) { Warning = false; Message = "Every saved account is already running or starting."; return; }
         launching = true; Raise(nameof(HasClosedLogins)); Raise(nameof(OpenClosedLabel)); OpenClosedCommand.Notify(); OpenSelectedCommand.Notify();
-        int opened = 0; var failures = new List<string>();
-        try
-        {
-            foreach (var login in targets)
-            {
-                Warning = false; Message = $"Opening {login.Username} ({opened + 1} of {targets.Length})…";
-                try
-                {
-                    string cookie = vault.Cookie(login.UserId) ?? throw new InvalidOperationException("The saved login could not be read.");
-                    var plan = await PlanLaunchAsync(login.UserId, cookie);
-                    int pid = await LaunchOneAsync(cookie, plan, null);
-                    launchedPids[pid] = login.UserId;
-                    launchedAt[login.UserId] = DateTimeOffset.UtcNow; opened++; RefreshLogins();
-                }
-                catch (Exception ex) { failures.Add($"{login.Username}: {ex.Message}"); log.Write($"Launching account {login.UserId} failed.", ex); }
-            }
-        }
+        int opened; List<string> failures;
+        try { (opened, failures) = await LaunchCoreAsync(targets); }
         finally { launching = false; RefreshLogins(); }
         Warning = failures.Count > 0;
         Message = failures.Count == 0 ? $"Started {opened} account(s). Use Arrange once their windows appear." : $"Started {opened}; {failures.Count} failed. {failures[0]}";

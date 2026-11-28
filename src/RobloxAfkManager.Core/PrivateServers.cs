@@ -32,19 +32,31 @@ public static partial class PrivateServerLink
     private static partial Regex ShareLink();
 }
 
-// Which private server an account joins: the first N accounts (by their place in the dashboard order) go to server 1, the rest to server 2.
+// Which private server an account joins. Each account is given a server once and keeps it, so restarting, reopening or
+// reordering the cards never moves an account and the two servers stay at exactly the sizes the person chose.
 public static class ServerAssignment
 {
     public const int DefaultFirstCount = 6;
-    // position is 1-based. Accounts the manager has no position for yet (int.MaxValue) go to server 2.
-    public static int ServerFor(int position, int firstCount) => position >= 1 && position <= firstCount ? 1 : 2;
 
-    // The 1-based position of each account: by the saved dashboard order, then by id so it never depends on who is running.
-    public static IReadOnlyDictionary<long, int> Positions(IEnumerable<long> accounts, IReadOnlyDictionary<long, int> order)
+    // order: every saved account, in the order the dashboard shows them. existing: servers already given (1 or 2).
+    // With nothing given yet, the first firstCount accounts get server 1 and the rest server 2. Accounts added later
+    // fill server 1 up to firstCount, then go to server 2. Accounts that are no longer in order are dropped.
+    public static IReadOnlyDictionary<long, int> Assign(IReadOnlyList<long> order, int firstCount, IReadOnlyDictionary<long, int>? existing)
     {
-        var sorted = accounts.Distinct().OrderBy(id => order.TryGetValue(id, out var o) ? o : int.MaxValue).ThenBy(id => id).ToArray();
         var result = new Dictionary<long, int>();
-        for (int i = 0; i < sorted.Length; i++) result[sorted[i]] = i + 1;
+        var ids = order.Distinct().ToArray();
+        if (existing is not null) foreach (var id in ids) if (existing.TryGetValue(id, out var n) && n is 1 or 2) result[id] = n;
+        if (result.Count == 0)
+        {
+            for (int i = 0; i < ids.Length; i++) result[ids[i]] = i < firstCount ? 1 : 2;
+            return result;
+        }
+        int onFirst = result.Values.Count(v => v == 1);
+        foreach (var id in ids)
+        {
+            if (result.ContainsKey(id)) continue;
+            if (onFirst < firstCount) { result[id] = 1; onFirst++; } else result[id] = 2;
+        }
         return result;
     }
 }

@@ -2,10 +2,16 @@
 
 ## Unreleased
 
-### Private servers and Reconnect all
-- **Two private servers.** Paste two `roblox.com/share?code=…&type=Server` links in Settings → Accounts. The first N accounts (6 by default, in dashboard order) join private server 1 and the rest join private server 2. Opening, the Restart button, auto-reopen and the other automatic fixes all send each account to its own server. With only one link set, every account joins it.
-- **Reconnect all** (button next to Refresh). It closes every running account that has a saved login, waits a minute so the private servers empty and reset, then reconnects each account to its server. It asks first, checks every login and link before closing anything, and does not raise false alerts for the windows it closes. Ignored clients and clients without a saved login stay open, and a server with someone still in it will not reset (the activity log says so).
-- **Launches never overlap.** Every launch, from any button or automatic fix, waits until the previous one finished and the "Seconds between accounts" gap (5 to 120 seconds, 10 by default) has passed, so two accounts are never started at the same moment.
+### Private servers, Rejoin all and Reset servers
+- **Two private servers, split exactly.** Paste two `roblox.com/share?code=…&type=Server` links in Settings → Accounts. With 12 accounts and "Accounts on private server 1" set to 6, six go to each server. Each account is given its server once, in dashboard order, and keeps it, so restarting, reopening or reordering cards never moves an account and a server never ends up over its limit. **Split accounts again** starts over from the current order. An account added later fills server 1 until it has its share. With only one link set, every account joins it.
+- **Rejoin all** (button next to Refresh) opens every saved account that is not running, one at a time, each on its own server. It is available whenever at least one account is missing.
+- **Reset servers** (Settings → Accounts) closes every running account with a saved login, waits one minute after the last one has left so the private servers empty and reset, then rejoins all accounts. It asks first, checks every login and link before closing anything, and raises no false alerts for the windows it closes. Ignored clients and clients without a saved login stay open, and a server with someone still in it will not reset (the activity log says so).
+- **Launches never overlap.** Every launch, from any button or automatic fix, waits until the previous one finished and the "Seconds between accounts" gap (5 to 120 seconds, 10 by default) has passed, and checks again that the account is not already running or still loading.
+
+### Fixes: accounts restarting over and over
+- **Healthy accounts were being restarted as "login lost".** The login check counted every HTTP 401 in the Roblox log. In an event game a healthy client gets a 401 from `apis.roblox.com` (event polling) every few seconds, which looked like a lost login. Those game-feature 401s are ignored now, and an account is not login-restarted within 10 minutes of being started or while it has two windows.
+- **An account that is still loading is never started a second time.** A private server join can queue for minutes; after 3 minutes the manager used to treat the account as gone and start a duplicate, and the two windows kicked each other ("joined from another device"). A launched client that is still loading now counts as running for up to 15 minutes.
+- **A second window of the same account is closed, not restarted.** If one window shows "joined from another device" while another window of that account is fine, the disconnected one is closed and the healthy one is left alone.
 
 ## v0.12.0: Several clients at once, disconnect detection and restart, incident log
 

@@ -46,7 +46,9 @@ public sealed partial class MainViewModel
     // Runs on every refresh: notices accounts that disappeared or were kicked, and only counts them when the person is away.
     private void TrackReopen()
     {
-        var current = Clients.Where(c => !c.IsIgnored && c.AccountId is not null).GroupBy(c => c.AccountId!.Value).ToDictionary(g => g.Key, g => g.First());
+        // If an account has two windows, the one that is not disconnected speaks for it: restarting the other would knock the healthy one off.
+        var current = Clients.Where(c => !c.IsIgnored && c.AccountId is not null).GroupBy(c => c.AccountId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderBy(t => t.Session?.Phase == SessionPhase.Disconnected ? 1 : 0).First());
         var now = DateTimeOffset.UtcNow;
         if (autoReopen && IsAway)
         {
@@ -65,6 +67,30 @@ public sealed partial class MainViewModel
         foreach (var id in gaveUp.Where(current.ContainsKey).ToArray()) gaveUp.Remove(id);
         foreach (var (id, tile) in current) accountLabels[id] = tile.Label;
         previouslyRunning = current.Keys.ToHashSet();
+    }
+
+    // A disconnected window of an account that has another, healthy window is only closed, never restarted: starting it again
+    // would log the account in a second time and each window would keep kicking the other ("joined from another device").
+    private bool closingDuplicates;
+    private async Task CloseDuplicateWindowsAsync()
+    {
+        if (!autoReopen || closingDuplicates || reopening || recovering || launching || Busy || disposed || !IsAway) return;
+        var now = DateTimeOffset.UtcNow;
+        var stale = Clients.Where(c => !c.IsIgnored && c.AccountId is { } id && c.Session is { Phase: SessionPhase.Disconnected, EventAt: { } at } && now - at >= KickedDelay
+            && Clients.Any(o => !ReferenceEquals(o, c) && o.AccountId == id && o.Session?.Phase != SessionPhase.Disconnected)).ToArray();
+        if (stale.Length == 0) return;
+        closingDuplicates = true;
+        try
+        {
+            foreach (var tile in stale)
+            {
+                var closed = await Task.Run(() => manager.CloseClient(tile.Identity));
+                AddActivity(tile.Label, closed.Success
+                    ? "A second window of this account was disconnected" + (tile.Session?.Reason is { } why ? $" ({why.TrimEnd('.')})" : "") + ". Fix: closed that window. The other window of the account keeps running."
+                    : "A second, disconnected window of this account could not be closed: " + closed.Message, !closed.Success, announce: false, info: true);
+            }
+        }
+        finally { closingDuplicates = false; }
     }
 
     private async Task ReopenAwayAsync()
@@ -102,7 +128,7 @@ public sealed partial class MainViewModel
                 var closed = await Task.Run(() => manager.CloseClient(identity));
                 if (!closed.Success) throw new InvalidOperationException(closed.Message);
             }
-            int pid = await LaunchOneAsync(cookie, plan, ticket);
+            int pid = await LaunchOneAsync(cookie, plan, ticket, due, replacing: pending.CloseFirst);
             launchedPids[pid] = due; launchedAt[due] = DateTimeOffset.UtcNow;
             // Sent to Discord as a plain "what was done" message; the problem alert itself turns green when the account has really rejoined.
             AddActivity(pending.Label, (pending.CloseFirst

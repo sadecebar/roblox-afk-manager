@@ -54,6 +54,20 @@ internal static class Program
                 new AccountDetails(new SessionReport(userId, 8, 18, SessionPhase.Disconnected, null, DateTimeOffset.UtcNow - ago, DateTimeOffset.UtcNow, 0, "Lost connection to the game server, please reconnect"), "FixtureRanger", "Game", null)));
     }
 
+    // Two windows of one account: the first is fine, the second shows "joined from another device".
+    private sealed class TwoWindowsLookup(long userId) : IAccountDetailsLookup
+    {
+        public Task<IReadOnlyDictionary<ProcessIdentity, string>> ResolveAsync(IReadOnlyList<ProcessIdentity> processes, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<ProcessIdentity, string>>(processes.ToDictionary(p => p, _ => "FixtureRanger"));
+        public Task<IReadOnlyDictionary<ProcessIdentity, AccountDetails>> ResolveDetailsAsync(IReadOnlyList<ProcessIdentity> processes, CancellationToken cancellationToken)
+        {
+            var first = processes.OrderBy(p => p.ProcessId).First();
+            return Task.FromResult<IReadOnlyDictionary<ProcessIdentity, AccountDetails>>(processes.ToDictionary(p => p, p => new AccountDetails(p == first
+                ? new SessionReport(userId, 8, 18, SessionPhase.Joined, DateTimeOffset.UtcNow.AddMinutes(-30), DateTimeOffset.UtcNow.AddMinutes(-30), DateTimeOffset.UtcNow)
+                : new SessionReport(userId, 8, 18, SessionPhase.Disconnected, null, DateTimeOffset.UtcNow.AddMinutes(-10), DateTimeOffset.UtcNow, 0, "This game has been disconnected because you have joined a game from another device."), "FixtureRanger", "Game", null)));
+        }
+    }
+
     private static int passed, failed;
     [STAThread]
     private static int Main(string[] args)
@@ -482,15 +496,22 @@ internal static class Program
             Check(PrivateServerLink.ParseCode("https://www.roblox.com/share?code=zzzz&type=Server") is null);
             Check(PrivateServerLink.ParseCode("") is null && PrivateServerLink.ParseCode(null) is null);
         });
-        Test("Private servers: the first N accounts in dashboard order go to server 1 and the rest to server 2", () =>
+        Test("Private servers: 12 accounts split 6 and 6, and an account keeps its server however the cards are reordered", () =>
         {
-            var order = new Dictionary<long, int> { [10] = 0, [20] = 1, [30] = 2, [40] = 3, [50] = 4, [60] = 5, [70] = 6, [80] = 7 };
-            var positions = ServerAssignment.Positions(new long[] { 80, 70, 60, 50, 40, 30, 20, 10, 99 }, order); // 99 has no saved order yet
-            Check(positions[10] == 1 && positions[60] == 6 && positions[70] == 7 && positions[99] == 9);
-            Check(Enumerable.Range(1, 6).All(p => ServerAssignment.ServerFor(p, 6) == 1) && ServerAssignment.ServerFor(7, 6) == 2 && ServerAssignment.ServerFor(int.MaxValue, 6) == 2);
-            // Position only depends on the saved order, so an account that is not running keeps its place.
-            var without = ServerAssignment.Positions(new long[] { 10, 20, 30, 40, 50, 60, 70, 80 }, order);
-            Check(without[70] == 7 && without[10] == 1);
+            long[] order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+            var first = ServerAssignment.Assign(order, 6, null);
+            Check(first.Count == 12 && first.Values.Count(v => v == 1) == 6 && first.Values.Count(v => v == 2) == 6, "not 6 and 6");
+            Check(Enumerable.Range(1, 6).All(i => first[i] == 1) && Enumerable.Range(7, 6).All(i => first[i] == 2));
+            // The cards are reordered, one account is restarted: nobody moves.
+            long[] shuffled = [12, 3, 9, 1, 7, 5, 11, 2, 10, 4, 8, 6];
+            var again = ServerAssignment.Assign(shuffled, 6, first);
+            Check(again.All(p => first[p.Key] == p.Value), "an account changed server after the order changed");
+            // A new account fills the server that has room; a removed account frees its place.
+            var seven = ServerAssignment.Assign([.. order, 13], 6, first);
+            Check(seven[13] == 2 && seven.Values.Count(v => v == 1) == 6);
+            var fewer = ServerAssignment.Assign(order.Where(i => i != 4).Append(14).ToArray(), 6, first);
+            Check(fewer[14] == 1 && fewer.Values.Count(v => v == 1) == 6 && fewer.Values.Count(v => v == 2) == 6, "the freed place on server 1 was not refilled");
+            Check(ServerAssignment.Assign(order, 3, null).Values.Count(v => v == 1) == 3);
         });
         Test("Private servers: Roblox's answer is read strictly", () =>
         {
@@ -532,34 +553,82 @@ internal static class Program
             }
             finally { try { Directory.Delete(root, true); } catch (IOException) { } }
         });
-        Test("Reconnect all: closes every running account with a saved login, waits, then reopens it on its server; leaves the rest alone", () =>
+        Test("Reset servers: closes every running account with a saved login, waits after the last one left, then rejoins all on their servers", () =>
         {
             string a = "45418624af634644ad2617ba325e876f";
-            string root = Path.Combine(Path.GetTempPath(), "rafk-reconnect-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            string root = Path.Combine(Path.GetTempPath(), "rafk-reset-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130)); vault.Save(88, "Offline", new string('o', 130));
                 var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddMinutes(-5).Ticks); var launcher = new RecordingLauncher();
                 using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new FixedAccountLookup(77), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { ReconnectDelay = TimeSpan.FromMilliseconds(600) };
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { ResetDelay = TimeSpan.FromMilliseconds(600), LaunchSpacingSeconds = 5 };
                 vm.PrivateServer1Link = a;
                 void Refresh() { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(80); }
                 for (int i = 0; i < 40 && vm.Clients.FirstOrDefault()?.AccountId != 77; i++) Refresh();
                 Check(vm.Clients[0].AccountId == 77, "account was not identified");
-                int asked = 0; vm.ConfirmReconnect = n => { asked = n; return true; };
-                vm.ReconnectAllCommand.Execute(null);
+                int asked = 0; vm.ConfirmReset = n => { asked = n; return true; };
+                vm.ResetServersCommand.Execute(null);
                 var started = DateTime.UtcNow;
-                for (int i = 0; i < 100 && launcher.Launched.Count == 0; i++) Thread.Sleep(50);
+                for (int i = 0; i < 250 && launcher.Launched.Count < 2; i++) Thread.Sleep(50);
                 var waited = DateTime.UtcNow - started;
                 Check(asked == 1, "the person was not asked first");
                 Check(fake.Closing.Count == 1, "the running account was not closed");
-                Check(launcher.Launched.Count == 1 && launcher.LinkCodes[0] == "link-" + a[..4] && launcher.Launched[0].Place == 5000 + a[0], "it was not reopened on its private server");
-                Check(waited >= TimeSpan.FromMilliseconds(500), $"it reopened before the wait was over ({waited.TotalMilliseconds:0} ms)");
-                Check(vm.Activity.Any(m => m.Message.Contains("Reconnect")), "reconnect was not written down");
+                Check(launcher.Launched.Count == 2, "the closed account and the account that was already offline should both rejoin: " + launcher.Launched.Count);
+                Check(launcher.Launched.All(l => l.Place == 5000 + a[0]) && launcher.LinkCodes.All(c => c == "link-" + a[..4]), "they were not sent to the private server");
+                Check(waited >= TimeSpan.FromMilliseconds(500), $"it rejoined before the wait was over ({waited.TotalMilliseconds:0} ms)");
+                Check(launcher.Times.Count == 2 && launcher.Times[1] - launcher.Times[0] >= TimeSpan.FromSeconds(4.5), "the two accounts started too close together");
+                Check(vm.Activity.Any(m => m.Message.Contains("Servers reset")), "the reset was not written down");
                 // Declining does nothing.
-                var closingBefore = fake.Closing.Count; vm.ConfirmReconnect = _ => false;
-                vm.ReconnectAllCommand.Execute(null); Thread.Sleep(300);
-                Check(fake.Closing.Count == closingBefore && launcher.Launched.Count == 1, "closed accounts although the person said no");
+                var closingBefore = fake.Closing.Count; vm.ConfirmReset = _ => false;
+                vm.ResetServersCommand.Execute(null); Thread.Sleep(300);
+                Check(fake.Closing.Count == closingBefore && launcher.Launched.Count == 2, "closed accounts although the person said no");
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+        });
+        Test("A lost login is judged only from account services: game-feature 401s from apis.roblox.com are ignored", () =>
+        {
+            string feature = "2026-11-28T00:24:24.786Z,68.786301,76bc,12 [DFLog::HttpTraceError] HttpResponse(#303 0x1f1bf6d77f8) time:134.0ms (net:133.9ms timeInRetryQueue:0.0ms)status:401 Unauthorized bodySize:76 url:{ \"https://apis.roblox.com/virtual-events/v1/virtual-events/6987990443418059361\" } ip:128.116.44.3";
+            string account = feature.Replace("https://apis.roblox.com/virtual-events/v1/virtual-events/6987990443418059361", "https://friends.roblox.com/v1/users/123/friends");
+            Check(!SessionLogParser.TryReadAuthFailure(feature, out _), "an event-feature 401 counted as a lost login");
+            Check(SessionLogParser.TryReadAuthFailure(account, out _), "a 401 from an account service no longer counts");
+        });
+        Test("Rejoin all is available when at least one saved account is missing, and an account still loading is never started twice", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-rejoin-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var launcher = new RecordingLauncher();
+                using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
+                Check(!vm.OpenClosedCommand.CanExecute(null), "enabled with nothing to open to");
+                vm.GameLink = "1818";
+                Check(vm.OpenClosedCommand.CanExecute(null), "not enabled although an account is missing");
+                vm.OpenClosedCommand.Execute(null);
+                for (int i = 0; i < 100 && launcher.Launched.Count == 0; i++) Thread.Sleep(50);
+                Check(launcher.Launched.Count == 1);
+                Thread.Sleep(300);
+                vm.OpenClosedCommand.Execute(null); Thread.Sleep(500); // just started: not started again
+                Check(launcher.Launched.Count == 1, "an account that was just started was started a second time");
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+        });
+        Test("Away: a second, disconnected window of an account is closed but never restarted over the healthy one", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-twin-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var fake = new FakeWindowSystem(2, DateTime.UtcNow.AddMinutes(-30).Ticks); var launcher = new RecordingLauncher();
+                using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new TwoWindowsLookup(77), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle { Idle = TimeSpan.FromMinutes(10) });
+                vm.GameLink = "1818"; vm.AutoReopen = true;
+                for (int i = 0; i < 40 && fake.Closing.Count == 0; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(100); }
+                for (int i = 0; i < 6; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(100); }
+                Check(fake.Closing.Count == 1, $"the disconnected second window was not closed (closed {fake.Closing.Count})");
+                Check(launcher.Launched.Count == 0, "the account was started again although a healthy window of it was running");
+                Check(vm.Activity.Any(a => a.Message.Contains("second window")), "the closing was not written down");
             }
             finally { try { Directory.Delete(root, true); } catch (IOException) { } }
         });

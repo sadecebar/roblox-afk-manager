@@ -73,6 +73,9 @@ public static partial class SessionLogParser
     public static bool TryReadAuthFailure(string line, out DateTimeOffset at)
     {
         at = default;
+        // apis.roblox.com carries game features (events, replays, profile cards). A healthy client in an event game gets a 401
+        // from it every few seconds, so counting them restarted accounts that were fine, over and over.
+        if (line.Contains("https://apis.roblox.com/", StringComparison.Ordinal)) return false;
         return Http401().Match(line) is { Success: true } m
             && DateTimeOffset.TryParse(m.Groups[1].Value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out at);
     }
