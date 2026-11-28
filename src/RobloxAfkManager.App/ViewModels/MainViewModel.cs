@@ -372,7 +372,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable, IEngi
         });
         if (forgetPreferences && result?.Success == true)
         {
-            foreach (long id in profiles.Keys.ToArray()) profiles[id] = profiles[id] with { PreferredPlan = null };
+            work.ForgetPreferredPlans();
             SaveWorkspace();
         }
         return result?.Success == true;

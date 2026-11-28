@@ -5,18 +5,18 @@ namespace RobloxAfkManager.App.ViewModels;
 
 public sealed partial class MainViewModel
 {
-    private IWorkspaceStore workspace = null!;
-    private readonly Dictionary<long, AccountProfile> profiles = [];
+    private WorkspaceService work = null!;
+    private Dictionary<long, AccountProfile> profiles => work.Profiles;
     private readonly SessionHealthTracker health = new();
     private readonly HashSet<ProcessIdentity> restoredProfiles = [];
-    private bool notificationsEnabled = true;
+    private bool notificationsEnabled { get => work.NotificationsEnabled; set => work.NotificationsEnabled = value; }
     private int unreadAlerts;
     private bool allowUnidentifiedClients;
     private bool restoringWorkspace, manualOrderChanged;
     private readonly HashSet<ProcessIdentity> editedNames = [], editedIgnores = [];
     public ObservableCollection<ActivityEntry> Activity { get; } = [];
     public event Action<ActivityEntry>? AlertRaised;
-    public bool NotificationsEnabled { get => notificationsEnabled; set { if (Set(ref notificationsEnabled, value)) SaveWorkspace(); } }
+    public bool NotificationsEnabled { get => notificationsEnabled; set { if (notificationsEnabled == value) return; notificationsEnabled = value; Raise(); SaveWorkspace(); } }
     public string ActivityLabel => unreadAlerts == 0 ? "Activity" : $"Activity ({unreadAlerts})";
     public bool HasActivity => Activity.Count > 0;
     public int UnreadAlerts => unreadAlerts;
@@ -33,35 +33,25 @@ public sealed partial class MainViewModel
 
     private void InitializeWorkspace(IWorkspaceStore store)
     {
-        workspace = store;
-        var settings = store.Read();
-        foreach (var profile in settings.Profiles) profiles.TryAdd(profile.UserId, profile);
-        foreach (var entry in settings.History.Take(100)) Activity.Add(entry);
-        notificationsEnabled = settings.Notifications;
+        work = new WorkspaceService(store, log);
+        foreach (var entry in work.History) Activity.Add(entry);
     }
     private void SaveWorkspace()
     {
-        try { workspace.Write(new(profiles.Values.OrderBy(p => p.Order).Take(128).ToArray(), Activity.Take(100).ToArray(), notificationsEnabled)); }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or ArgumentException)
-        { Warning = true; Message = "Could not save workspace preferences. Check the app's local settings folder."; log.Write("Workspace settings could not be saved."); }
+        if (!work.Save()) { Warning = true; Message = "Could not save workspace preferences. Check the app's local settings folder."; }
         Raise(nameof(SavedProfileCount)); Raise(nameof(ProfileSummary));
         Raise(nameof(HasSavedPlans)); ResetResourcePlanCommand.Notify();
     }
     private void SaveProfile(ClientTileViewModel tile, ResourcePlan? preferredPlan = null, bool updatePlan = false)
     {
         if (tile.AccountId is not { } id) return;
-        if (!profiles.TryGetValue(id, out var previous) && profiles.Count >= 128) return;
-        profiles[id] = new(id, tile.CustomName, previous?.Order ?? (profiles.Count == 0 ? 0 : profiles.Values.Max(p => p.Order) + 1),
-            tile.IsIgnored, updatePlan ? preferredPlan : previous?.PreferredPlan,
-            previous?.Username, previous?.LastGame, previous?.LastSeen, previous?.Window);
+        work.SaveProfile(id, tile.CustomName, tile.IsIgnored, preferredPlan, updatePlan);
         SaveWorkspace();
     }
     private void SaveOrder()
     {
-        var ordered = Clients.Where(c => c.AccountId is not null).Select(c => c.AccountId!.Value).Distinct().ToArray();
-        // Use the existing slots so accounts that are currently offline retain their relative position.
-        var slots = ordered.Where(profiles.ContainsKey).Select(id => profiles[id].Order).Order().ToArray();
-        for (int i = 0; i < ordered.Length && i < slots.Length; i++) profiles[ordered[i]] = profiles[ordered[i]] with { Order = slots[i] };
+        // Existing slots are reused so accounts that are currently offline keep their relative position.
+        work.SaveOrder(Clients.Where(c => c.AccountId is not null).Select(c => c.AccountId!.Value).Distinct().ToArray());
         SaveWorkspace();
     }
     private async Task ApplyAccountDetailsAsync(IReadOnlyDictionary<ProcessIdentity, AccountDetails> details, ProcessIdentity[] requested)
@@ -150,5 +140,5 @@ public sealed partial class MainViewModel
     }
     public void MarkActivityRead() { unreadAlerts = 0; RaiseUnread(); }
     private void RaiseUnread() { Raise(nameof(ActivityLabel)); Raise(nameof(UnreadAlerts)); Raise(nameof(HasUnreadAlerts)); }
-    public void ClearActivity() { Activity.Clear(); MarkActivityRead(); Raise(nameof(HasActivity)); SaveWorkspace(); }
+    public void ClearActivity() { Activity.Clear(); work.ClearHistory(); MarkActivityRead(); Raise(nameof(HasActivity)); SaveWorkspace(); }
 }

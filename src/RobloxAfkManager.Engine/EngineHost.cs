@@ -13,6 +13,10 @@ public interface IClientView
     string Label { get; }
     // The window's own state, for example "Not responding".
     string Status { get; }
+    PixelRect WindowBounds { get; }
+    // The Roblox username and game name read for this client (null until known).
+    string? DetectedName { get; }
+    string? KnownGameName { get; }
 }
 
 // What the engine services still borrow from the dashboard while behaviour moves out of it (docs/ARCHITECTURE-PLAN.md, M3).

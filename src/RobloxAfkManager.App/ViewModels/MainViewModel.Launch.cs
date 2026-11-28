@@ -62,8 +62,7 @@ public sealed partial class MainViewModel
     {
         try
         {
-            SaveWorkspace();
-            System.IO.File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(workspace.Read()));
+            work.Backup(path);
             Warning = false; Message = "Settings saved to the backup file. It holds no logins.";
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { Warning = true; Message = "Could not write the backup: " + ex.Message; }
@@ -72,15 +71,11 @@ public sealed partial class MainViewModel
     {
         try
         {
-            if (new System.IO.FileInfo(path).Length > 1_000_000) throw new System.IO.InvalidDataException("That file is too large to be a backup.");
-            var restored = System.Text.Json.JsonSerializer.Deserialize<WorkspaceSettings>(System.IO.File.ReadAllText(path)) ?? throw new System.IO.InvalidDataException("That file is empty.");
-            workspace.Write(restored);          // validates and trims the data
-            var clean = workspace.Read();
-            profiles.Clear(); foreach (var profile in clean.Profiles) profiles.TryAdd(profile.UserId, profile);
-            Activity.Clear(); foreach (var entry in clean.History.Take(100)) Activity.Add(entry);
-            notificationsEnabled = clean.Notifications; Raise(nameof(NotificationsEnabled)); Raise(nameof(HasActivity));
+            int count = work.Restore(path);
+            Activity.Clear(); foreach (var entry in work.History) Activity.Add(entry);
+            Raise(nameof(NotificationsEnabled)); Raise(nameof(HasActivity));
             SaveWorkspace(); RefreshLogins();
-            Warning = false; Message = $"Restored {profiles.Count} account profiles. Card order applies the next time the manager starts.";
+            Warning = false; Message = $"Restored {count} account profiles. Card order applies the next time the manager starts.";
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
         { Warning = true; Message = "That isn't a backup this manager can read: " + ex.Message; }

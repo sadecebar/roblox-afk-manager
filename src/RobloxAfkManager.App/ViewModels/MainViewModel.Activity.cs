@@ -12,7 +12,8 @@ public sealed partial class MainViewModel
 
     private void OnActivityAdded(ActivityEntry entry, bool alert)
     {
-        Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);
+        work.AddHistory(entry);
+        Activity.Insert(0, entry); while (Activity.Count > WorkspaceService.MaxHistory) Activity.RemoveAt(Activity.Count - 1);
         if (alert) { unreadAlerts++; if (notificationsEnabled) AlertRaised?.Invoke(entry); }
         RaiseUnread(); Raise(nameof(HasActivity)); SaveWorkspace();
     }
