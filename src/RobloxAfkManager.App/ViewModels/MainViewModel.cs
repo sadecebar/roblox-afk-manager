@@ -189,6 +189,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ = RecoverSignedOutAsync();
         _ = ReopenAwayAsync();
         _ = CloseDuplicateWindowsAsync();
+        _ = FallbackStuckPrivateJoinsAsync();
     }
 
     private async Task ReadStateAsync()

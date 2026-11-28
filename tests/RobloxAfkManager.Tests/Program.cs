@@ -15,11 +15,13 @@ internal static class Program
         public Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token) => Task.FromResult("ticket");
         public readonly List<string?> LinkCodes = [];
         public readonly List<DateTime> Times = [];
+        public int NextPid = 4242;
+        public bool FailResolve;
         public readonly List<string> Resolved = [];
-        public Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null) { lock (Launched) { Launched.Add((cookie, placeId)); LinkCodes.Add(linkCode); Times.Add(DateTime.UtcNow); } return Task.FromResult(4242); }
+        public Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null) { lock (Launched) { Launched.Add((cookie, placeId)); LinkCodes.Add(linkCode); Times.Add(DateTime.UtcNow); } return Task.FromResult(NextPid); }
         // Each share code maps to its own place and link code, so a test can tell the two servers apart.
         public Task<RobloxAfkManager.App.Services.PrivateServer> ResolveShareLinkAsync(string cookie, string shareCode, CancellationToken token)
-        { lock (Resolved) Resolved.Add(shareCode); return Task.FromResult(new RobloxAfkManager.App.Services.PrivateServer(5000 + shareCode[0], "link-" + shareCode[..4])); }
+        { lock (Resolved) Resolved.Add(shareCode); if (FailResolve) throw new InvalidOperationException("That private server link is no longer valid."); return Task.FromResult(new RobloxAfkManager.App.Services.PrivateServer(5000 + shareCode[0], "link-" + shareCode[..4])); }
     }
     private sealed class FakeDiscord : HttpMessageHandler
     {
@@ -629,6 +631,47 @@ internal static class Program
                 Check(fake.Closing.Count == 1, $"the disconnected second window was not closed (closed {fake.Closing.Count})");
                 Check(launcher.Launched.Count == 0, "the account was started again although a healthy window of it was running");
                 Check(vm.Activity.Any(a => a.Message.Contains("second window")), "the closing was not written down");
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+        });
+        Test("Private server fallback: a client that never gets in is closed and the account joins the public game instead, and it is logged", () =>
+        {
+            string a = "45418624af634644ad2617ba325e876f";
+            string root = Path.Combine(Path.GetTempPath(), "rafk-fallback-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks);
+                var launcher = new RecordingLauncher { NextPid = 101 }; // the pid of the one window: it stays on the loading screen
+                using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new AccountNameTests.EmptyLookup(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { PrivateJoinPatience = TimeSpan.FromMilliseconds(400), LaunchSpacingSeconds = 5 };
+                vm.GameLink = "1818"; vm.PrivateServer1Link = a;
+                vm.OpenClosedCommand.Execute(null);
+                for (int i = 0; i < 100 && launcher.Launched.Count < 1; i++) Thread.Sleep(50);
+                Check(launcher.Launched.Count == 1 && launcher.LinkCodes[0] is not null, "the first start should be on the private server");
+                for (int i = 0; i < 160 && launcher.Launched.Count < 2; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(100); }
+                Check(fake.Closing.Count == 1, "the stuck client was not closed");
+                Check(launcher.Launched.Count == 2 && launcher.LinkCodes[1] is null && launcher.Launched[1].Place == 1818, "the account did not move to the public game");
+                Check(vm.Activity.Any(m => m.Warning && m.Message.Contains("public server") && m.Message.Contains("private server 1")), "what happened was not written down");
+                Check(File.ReadAllText(vm.IncidentLogPath).Contains("public server"), "it is not in the incident log");
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+        });
+        Test("Private server fallback: a private server link that Roblox rejects sends the account to the public game and says so", () =>
+        {
+            string a = "45418624af634644ad2617ba325e876f";
+            string root = Path.Combine(Path.GetTempPath(), "rafk-badlink-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var launcher = new RecordingLauncher { FailResolve = true };
+                using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
+                vm.GameLink = "1818"; vm.PrivateServer1Link = a;
+                vm.OpenClosedCommand.Execute(null);
+                for (int i = 0; i < 100 && launcher.Launched.Count < 1; i++) Thread.Sleep(50);
+                Check(launcher.Launched.Count == 1 && launcher.LinkCodes[0] is null && launcher.Launched[0].Place == 1818, "it did not fall back to the public game");
+                Check(vm.Activity.Any(m => m.Warning && m.Message.Contains("no longer valid") && m.Message.Contains("public server")), "the bad link was not written down");
             }
             finally { try { Directory.Delete(root, true); } catch (IOException) { } }
         });

@@ -9,7 +9,7 @@ namespace RobloxAfkManager.App.ViewModels;
 // reset, then opens every saved account that is not running.
 public sealed partial class MainViewModel
 {
-    private sealed record StoredServers(string? Server1, string? Server2, int FirstCount, Dictionary<long, int>? Assignments = null);
+    private sealed record StoredServers(string? Server1, string? Server2, int FirstCount, Dictionary<long, int>? Assignments = null, long Place = 0);
     private sealed record LaunchPlan(long PlaceId, string? LinkCode, int Server);
     private static readonly TimeSpan ResolvedServerLife = TimeSpan.FromMinutes(30);
 
@@ -48,7 +48,7 @@ public sealed partial class MainViewModel
         if (string.IsNullOrWhiteSpace(value)) { field = null; Warning = false; Message = $"Private server {number} link removed."; }
         else if (PrivateServerLink.ParseCode(value) is { } code) { field = code; Warning = false; Message = $"Private server {number} saved."; }
         else { Warning = true; Message = "That isn't a private server share link (it looks like roblox.com/share?code=…&type=Server)."; RaiseServers(); return; }
-        resolvedServers.Clear(); SaveServers(); RaiseServers(); RefreshLogins();
+        resolvedServers.Clear(); privateFailedAt.Clear(); SaveServers(); RaiseServers(); RefreshLogins();
     }
 
     private void InitializeServers()
@@ -61,6 +61,7 @@ public sealed partial class MainViewModel
                 serverCode1 = PrivateServerLink.ParseCode(stored.Server1); serverCode2 = PrivateServerLink.ParseCode(stored.Server2);
                 firstServerCount = Math.Clamp(stored.FirstCount, 1, 128);
                 serverAssignments = (stored.Assignments ?? []).Where(p => p.Value is 1 or 2).ToDictionary(p => p.Key, p => p.Value);
+                lastKnownPlace = stored.Place > 0 ? stored.Place : 0;
             }
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { }
@@ -72,7 +73,7 @@ public sealed partial class MainViewModel
         try
         {
             System.IO.Directory.CreateDirectory(settingsFolder);
-            System.IO.File.WriteAllText(ServersFile, System.Text.Json.JsonSerializer.Serialize(new StoredServers(serverCode1, serverCode2, firstServerCount, serverAssignments)));
+            System.IO.File.WriteAllText(ServersFile, System.Text.Json.JsonSerializer.Serialize(new StoredServers(serverCode1, serverCode2, firstServerCount, serverAssignments, lastKnownPlace)));
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { Warning = true; Message = "Could not save the private servers: " + ex.Message; }
     }
@@ -104,7 +105,7 @@ public sealed partial class MainViewModel
     // Starts the split over from the dashboard order as it is now.
     private void ResplitAccounts()
     {
-        serverAssignments.Clear(); Assignments(commit: true); RaiseServers(); RefreshLogins();
+        serverAssignments.Clear(); privateFailedAt.Clear(); Assignments(commit: true); RaiseServers(); RefreshLogins();
         var counts = serverAssignments.Values.GroupBy(v => v).ToDictionary(g => g.Key, g => g.Count());
         Warning = false; Message = $"Accounts split again: {counts.GetValueOrDefault(1)} on private server 1, {counts.GetValueOrDefault(2)} on private server 2.";
     }
@@ -129,10 +130,22 @@ public sealed partial class MainViewModel
         }
         string code = (server == 1 ? serverCode1 : serverCode2)!;
         var now = DateTimeOffset.UtcNow;
+        // After a private join failed for this account it joins the game's public server for a while instead of trying again.
+        if (FallbackPlace > 0 && UsePublicFor(userId, now)) return new(FallbackPlace, null, 0);
         if (!resolvedServers.TryGetValue(code, out var known) || now - known.At > ResolvedServerLife)
         {
-            var resolved = await launcher.ResolveShareLinkAsync(cookie, code, CancellationToken.None);
-            resolvedServers[code] = known = (resolved, now);
+            try
+            {
+                var resolved = await launcher.ResolveShareLinkAsync(cookie, code, CancellationToken.None);
+                resolvedServers[code] = known = (resolved, now);
+                if (lastKnownPlace != resolved.PlaceId) { lastKnownPlace = resolved.PlaceId; SaveServers(); }
+            }
+            catch (Exception ex) when (FallbackPlace > 0 && ex is not OperationCanceledException)
+            {
+                privateFailedAt[userId] = now;
+                AddActivity(NameOf(userId), $"Could not use private server {server}: {ex.Message} Fix: it joins the public server of the game instead, and tries the private server again in {(int)PublicFallbackLife.TotalMinutes} minutes.", true, announce: true, quiet: true);
+                return new(FallbackPlace, null, 0);
+            }
         }
         return new(known.Server.PlaceId, known.Server.LinkCode, server);
     }
@@ -150,7 +163,9 @@ public sealed partial class MainViewModel
             var wait = lastLaunchEnd + LaunchSpacing - DateTimeOffset.UtcNow;
             if (wait > TimeSpan.Zero) await Task.Delay(wait);
             if (!replacing && IsActive(account, DateTimeOffset.UtcNow)) throw new InvalidOperationException("It is already running or still starting, so it was not started a second time.");
-            return await launcher.LaunchSafelyAsync(cookie, plan.PlaceId, CancellationToken.None, ticket, plan.LinkCode);
+            int started = await launcher.LaunchSafelyAsync(cookie, plan.PlaceId, CancellationToken.None, ticket, plan.LinkCode);
+            if (plan.LinkCode is not null) launchedPrivate.Add(account); else launchedPrivate.Remove(account);
+            return started;
         }
         finally { lastLaunchEnd = DateTimeOffset.UtcNow; launchGate.Release(); }
     }
@@ -165,7 +180,7 @@ public sealed partial class MainViewModel
         var candidates = Clients.Where(c => !c.IsIgnored && c.AccountId is { } id && saved.Contains(id))
             .Select(c => (Id: c.AccountId!.Value, c.Label, c.Identity)).ToArray();
         if (ConfirmReset is { } ask && !ask(candidates.Length)) return;
-        launching = true; RaiseServers();
+        launching = true; privateFailedAt.Clear(); RaiseServers();
         var targets = new List<(long Id, string Label, WindowIdentity Identity)>(); var skipped = new List<string>();
         try
         {
