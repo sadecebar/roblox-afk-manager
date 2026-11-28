@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Platform.Windows;
 
 public sealed class Win32UserIdle : IUserIdle
 {

@@ -8,7 +8,7 @@ namespace RobloxAfkManager.Engine;
 // The cookie is only ever sent to roblox.com, never logged, and never written in clear text.
 public sealed class LoginVault(string? path = null, ISecretProtector? protector = null)
 {
-    private readonly ISecretProtector protector = protector ?? DpapiSecretProtector.Instance;
+    private readonly ISecretProtector protector = SecretProtection.Resolve(protector);
     private sealed record Entry(long UserId, string Username, string Cipher);
     private readonly string path = path ?? Path.Combine(AppFolders.Data, "logins.dat");
     private List<Entry> entries = Load(path ?? Path.Combine(AppFolders.Data, "logins.dat"));

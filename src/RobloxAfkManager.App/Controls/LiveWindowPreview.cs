@@ -5,7 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using RobloxAfkManager.App.Services;
 using RobloxAfkManager.Core;
-using N = RobloxAfkManager.App.Native.NativeMethods;
+using N = RobloxAfkManager.Platform.Windows.NativeMethods;
 
 namespace RobloxAfkManager.App.Controls;
 

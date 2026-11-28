@@ -58,7 +58,7 @@ public sealed class ClientTileViewModel(ClientWindow client, int slot) : Observa
     {
         account = details;
         SetDetectedName(details.Username);
-        if (!ReferenceEquals(avatarBytes, details.AvatarPng)) { avatarBytes = details.AvatarPng; Avatar = PublicAccountArtwork.Decode(avatarBytes); Raise(nameof(Avatar)); }
+        if (!ReferenceEquals(avatarBytes, details.AvatarPng)) { avatarBytes = details.AvatarPng; Avatar = RobloxAfkManager.App.Controls.AvatarImages.Decode(avatarBytes); Raise(nameof(Avatar)); }
         Raise(nameof(AccountId)); Raise(nameof(ProfileHint)); UpdateSessionClock(DateTimeOffset.UtcNow);
     }
     public void UpdateSessionClock(DateTimeOffset now)

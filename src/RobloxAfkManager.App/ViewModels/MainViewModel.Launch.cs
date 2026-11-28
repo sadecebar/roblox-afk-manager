@@ -128,7 +128,7 @@ public sealed partial class MainViewModel
 
     private void InitializeLaunch(IAccountLauncher? accountLauncher, LoginVault? loginVault, string? folder)
     {
-        launcher = accountLauncher ?? new AccountLauncher();
+        launcher = accountLauncher ?? new AccountLauncher(new WindowsRobloxClients());
         vault = loginVault ?? new LoginVault();
         settingsFolder = folder ?? AppFolders.Data;
         spacingSeconds = ReadSpacing(); gamePlaceId = ReadGame(); InitializeServers();

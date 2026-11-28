@@ -1,17 +1,14 @@
-using System.ComponentModel;
-using System.Diagnostics;
-using System.IO;
 using System.Net;
 using System.Net.Http;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Engine;
 
 
-// Starts Roblox as a specific account using Roblox's own one-time authentication ticket flow.
-public sealed class AccountLauncher : IAccountLauncher, IDisposable
+// Starts Roblox as a specific account using Roblox's own one-time authentication ticket flow. The web calls and the launch
+// sequence live here; finding, closing and starting the Roblox processes is the platform's job (IRobloxClients).
+public sealed class AccountLauncher(IRobloxClients clients, Func<CancellationToken, Task<string?>>? acceptedVersion = null) : IAccountLauncher, IDisposable
 {
     private static readonly HttpClient Http = CreateHttp();
     // Identifies itself plainly as this tool: no browser or Roblox-client disguise.
@@ -25,56 +22,26 @@ public sealed class AccountLauncher : IAccountLauncher, IDisposable
     // Starts one account and returns the new client's process id. Only "Roblox never started" is an error.
     public async Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null)
     {
-        CloseIdleBackgroundClients();
-        var before = RobloxProcessIds();
+        clients.CloseIdleBackgroundClients();
+        var before = clients.ProcessIds();
         // Running clients must not hear the new client's start signal, so close their singleton event first.
-        if (before.Length > 0) RobloxSingleton.Release();
+        if (before.Length > 0) clients.ReleaseSingleton();
         await LaunchAsync(cookie, placeId, token, readyTicket, linkCode);
         var deadline = DateTime.UtcNow.AddSeconds(60);
         int[] fresh = [];
         while (DateTime.UtcNow < deadline && fresh.Length == 0)
-        { await Task.Delay(300, token); fresh = RobloxProcessIds().Except(before).ToArray(); }
+        { await Task.Delay(300, token); fresh = clients.ProcessIds().Except(before).ToArray(); }
         // The new client creates its own event a moment after it starts; close it too so the next launch is quiet.
-        for (int i = 0; i < 20 && fresh.Length > 0; i++) { if (RobloxSingleton.Release() > 0) break; await Task.Delay(250, token); }
+        for (int i = 0; i < 20 && fresh.Length > 0; i++) { if (clients.ReleaseSingleton() > 0) break; await Task.Delay(250, token); }
         const string Blocked = "Roblox didn't open a new window. A Roblox client that was already running before the manager started holds the single-instance lock. Close all Roblox windows, then open the accounts from the manager.";
         if (fresh.Length == 0) throw new InvalidOperationException(before.Length > 0 ? Blocked : "Roblox didn't start within a minute.");
         if (before.Length > 0)
         {
             // A second client that Roblox rejects starts and exits again within seconds.
             await Task.Delay(8000, token);
-            if (!RobloxProcessIds().Contains(fresh[0])) throw new InvalidOperationException(Blocked);
+            if (!clients.ProcessIds().Contains(fresh[0])) throw new InvalidOperationException(Blocked);
         }
         return fresh[0];
-    }
-
-    // Roblox leaves a hidden background process behind every time a client exits (started with --launch-to-tray). It has no window and
-    // holds almost no memory. A client started afterwards tries to hand its launch to it, fails ("SingleInstanceGuard", error 1400) and
-    // exits at once, which is the "didn't open a new window" failure. They are closed before each launch. Anything with a window,
-    // anything big enough to be a running game, and anything started in the last minute (a client still opening) is left alone.
-    private static readonly TimeSpan BackgroundClientAge = TimeSpan.FromSeconds(45);
-    private const long BackgroundClientMemory = 400L * 1024 * 1024;
-
-    public static int CloseIdleBackgroundClients()
-    {
-        int closed = 0;
-        foreach (var process in Process.GetProcessesByName("RobloxPlayerBeta"))
-            using (process)
-            {
-                try
-                {
-                    if (process.MainWindowHandle != IntPtr.Zero || process.WorkingSet64 >= BackgroundClientMemory || DateTime.Now - process.StartTime < BackgroundClientAge) continue;
-                    process.Kill(); closed++;
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException) { /* it is already gone, or not ours to close */ }
-            }
-        return closed;
-    }
-
-    private static int[] RobloxProcessIds()
-    {
-        var ids = new List<int>();
-        foreach (var process in Process.GetProcessesByName("RobloxPlayerBeta")) using (process) ids.Add(process.Id);
-        return [.. ids];
     }
 
     public static string? CleanCookie(string? raw)
@@ -109,34 +76,21 @@ public sealed class AccountLauncher : IAccountLauncher, IDisposable
         string privatePart = linkCode is null ? "" : $"&linkCode={linkCode}";
         string launcher = Uri.EscapeDataString($"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request={request}&browserTrackerId={tracker}&placeId={placeId}{privatePart}&isPlayTogetherGame=false");
         string uri = $"roblox-player:1+launchmode:play+gameinfo:{ticket}+launchtime:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}+placelauncherurl:{launcher}+browsertrackerid:{tracker}+robloxLocale:en_us+gameLocale:en_us+channel:+LaunchExp:InApp";
-        // Never go through the roblox-player: protocol handler. That is RobloxPlayerInstaller.exe, which treats the
-        // launch as an install/update and terminates every running RobloxPlayerBeta.exe. Start the client itself.
-        var info = new ProcessStartInfo(await ClientExecutableAsync(token)) { UseShellExecute = false };
-        info.ArgumentList.Add(uri);
-        Process.Start(info)?.Dispose();
+        clients.Start(clients.ClientExecutable(await (acceptedVersion ?? AcceptedVersionAsync)(token)), uri);
     }
 
-    // The version Roblox's servers currently accept, then a version that is already running, then the newest on disk.
-    public static async Task<string> ClientExecutableAsync(CancellationToken token)
+    // The client version Roblox's servers currently accept (a folder name such as "version-2c6fd5e09aaf4cfa"), or null when unknown.
+    private static async Task<string?> AcceptedVersionAsync(CancellationToken token)
     {
-        string versions = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Roblox", "Versions");
         try
         {
             using var response = await Http.GetAsync("https://clientsettingscdn.roblox.com/v2/client-version/WindowsPlayer", token);
-            if (response.IsSuccessStatusCode)
-            {
-                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
-                string? guid = json.RootElement.GetProperty("clientVersionUpload").GetString();
-                if (guid is { Length: > 0 } && guid.All(c => char.IsLetterOrDigit(c) || c == '-') && Path.Combine(versions, guid, "RobloxPlayerBeta.exe") is { } current && File.Exists(current)) return current;
-            }
+            if (!response.IsSuccessStatusCode) return null;
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+            string? guid = json.RootElement.GetProperty("clientVersionUpload").GetString();
+            return guid is { Length: > 0 } && guid.All(c => char.IsLetterOrDigit(c) || c == '-') ? guid : null;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException) { }
-        foreach (var process in Process.GetProcessesByName("RobloxPlayerBeta"))
-            using (process) { try { if (process.MainModule?.FileName is { } running && File.Exists(running)) return running; } catch (Exception ex) when (ex is Win32Exception or InvalidOperationException) { } }
-        var newest = Directory.Exists(versions)
-            ? new DirectoryInfo(versions).EnumerateDirectories().Select(d => Path.Combine(d.FullName, "RobloxPlayerBeta.exe")).Where(File.Exists).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
-            : null;
-        return newest ?? throw new InvalidOperationException("Roblox isn't installed for this Windows user. Install it from roblox.com once, then try again.");
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or InvalidOperationException) { return null; }
     }
 
     public async Task<PrivateServer> ResolveShareLinkAsync(string cookie, string shareCode, CancellationToken token)

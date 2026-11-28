@@ -251,7 +251,7 @@ internal static class SessionWorkspaceTests
             foreach (string url in new[] { "http://tr.rbxcdn.com/test", "https://rbxcdn.com.example/test", "https://localhost/test", "https://tr.rbxcdn.com:8443/test", new UriBuilder("https://tr.rbxcdn.com/test") { UserName = "fixture" }.Uri.AbsoluteUri })
                 Program.Check(!PublicAccountArtwork.IsAvatarUrl(url, out _));
             Program.Check(!PublicAccountArtwork.ValidPng(new byte[24]));
-            Program.Check(PublicAccountArtwork.Decode(new byte[24]) is null);
+            Program.Check(RobloxAfkManager.App.Controls.AvatarImages.Decode(new byte[24]) is null);
         });
     }
     private static void Ready(MainViewModel vm) { vm.RefreshAsync().GetAwaiter().GetResult(); Wait(() => !vm.IsResolvingAccounts && !vm.Busy); }
@@ -260,7 +260,7 @@ internal static class SessionWorkspaceTests
         var service = new PublicAccountArtwork();
         service.RefreshAsync([new(1, 1818, 13058, SessionPhase.Joined, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)], default).GetAwaiter().GetResult();
         Program.Check(service.Avatar(1) is { Length: > 0 }, "Public avatar endpoint did not return a completed image");
-        Program.Check(PublicAccountArtwork.Decode(service.Avatar(1)) is { IsFrozen: true }, "Public avatar failed bounded decode");
+        Program.Check(RobloxAfkManager.App.Controls.AvatarImages.Decode(service.Avatar(1)) is { IsFrozen: true }, "Public avatar failed bounded decode");
         Program.Check(!string.IsNullOrWhiteSpace(service.Game(13058)), "Public game endpoint did not return a game name");
     }
     public static void ReadOnlyLiveDetails()
@@ -269,7 +269,7 @@ internal static class SessionWorkspaceTests
         var before = windows.Detect();
         Program.Check(before.Count > 0, "No live clients for the optional read-only account-details check");
         var placements = before.ToDictionary(c => c.Identity, c => windows.Capture(c.Identity));
-        var provider = new LogAccountNameLookup();
+        var provider = new LogAccountNameLookup(owners: LogFileOwners.Read);
         var details = provider.ResolveDetailsAsync(before.Select(c => ProcessIdentity.From(c.Identity)).ToArray(), default).GetAwaiter().GetResult();
         Program.Check(details.Count > 0, "No log could be uniquely matched to a live client");
         Program.Check(details.Values.Any(d => d.Session.UserId > 0 && d.Username is not null), "Live public username lookup returned no names");

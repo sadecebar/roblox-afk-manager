@@ -2,7 +2,7 @@ using System.IO;
 using System.Text;
 using RobloxAfkManager.Core;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Engine;
 
 // Runs serially in the background, at most once per 30-second discovery interval.
 public sealed class LogAccountNameLookup : IAccountDetailsLookup
@@ -32,7 +32,8 @@ public sealed class LogAccountNameLookup : IAccountDetailsLookup
         this.stateFile = stateFile;
         LoadRemembered();
         this.directory = directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Roblox", "logs");
-        this.owners = owners ?? LogFileOwners.Read;
+        // Which processes hold a log open. Only Windows can say (Platform.Windows LogFileOwners.Read), so it is passed in.
+        this.owners = owners ?? throw new ArgumentNullException(nameof(owners), "Pass the platform's log-owner reader (LogFileOwners.Read).");
         this.usernames = usernames ?? PublicRobloxUsers.LookupAsync;
     }
 

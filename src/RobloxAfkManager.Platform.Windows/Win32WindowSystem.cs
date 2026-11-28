@@ -4,11 +4,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using RobloxAfkManager.App.Native;
 using RobloxAfkManager.Core;
-using static RobloxAfkManager.App.Native.NativeMethods;
+using static RobloxAfkManager.Platform.Windows.NativeMethods;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Platform.Windows;
 
 public sealed class Win32WindowSystem(IAppLog log) : IWindowSystem
 {

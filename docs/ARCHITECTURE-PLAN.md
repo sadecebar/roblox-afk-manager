@@ -36,7 +36,7 @@ Every milestone ends with all tests passing, a published test build and no chang
 
 - [x] M0: baseline
 - [x] M1: `RobloxAfkManager.Engine` (plain `net10.0`, so WPF cannot be referenced) holds the login vault, Discord webhook, settings stores, file log, public Roblox lookups and the launcher/idle contracts. Secrets go through `ISecretProtector`; its DPAPI implementation still lives in Engine and moves in M2. Rule test: "Architecture: the engine references no user interface".
-- [ ] M2
+- [x] M2: `RobloxAfkManager.Platform.Windows` (no WPF) holds window and process handling, log-file owners, the Roblox single-instance handle, idle time and DPAPI. The launcher is split: the launch sequence and Roblox web calls are in Engine (`AccountLauncher`), the processes behind `IRobloxClients` (`WindowsRobloxClients`). `WindowsPlatform.Install()` plugs DPAPI in at startup. The launch sequence is now tested on fake processes. Win32 that is part of drawing the window stays in the app: live previews (DWM), the window-change hook (runs on the UI thread), tray notifications and phone screenshots.
 - [ ] M3
 - [ ] M4
 - [ ] M5

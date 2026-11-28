@@ -26,7 +26,7 @@ public sealed class LoginWindow : Window
 
     private readonly WebView2 web = new();
     private readonly TextBlock status = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xC9, 0xCD, 0xD6)), Margin = new Thickness(14, 10, 14, 10), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-    private readonly AccountLauncher launcher = new();
+    private readonly AccountLauncher launcher = new(new WindowsRobloxClients());
     private readonly DispatcherTimer poll = new() { Interval = TimeSpan.FromSeconds(2) };
     private string? lastTried;
     private bool done, checking;

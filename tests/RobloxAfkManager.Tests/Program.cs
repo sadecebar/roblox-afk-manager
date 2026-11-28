@@ -23,6 +23,18 @@ internal static class Program
         public Task<RobloxAfkManager.Engine.PrivateServer> ResolveShareLinkAsync(string cookie, string shareCode, CancellationToken token)
         { lock (Resolved) Resolved.Add(shareCode); if (FailResolve) throw new InvalidOperationException("That private server link is no longer valid."); return Task.FromResult(new RobloxAfkManager.Engine.PrivateServer(5000 + shareCode[0], "link-" + shareCode[..4])); }
     }
+    // Roblox processes without Windows: one new client "appears" once Start is called.
+    private sealed class FakeRobloxClients : IRobloxClients
+    {
+        public readonly List<string> Calls = [];
+        public string? Executable, Argument;
+        private bool started;
+        public int[] ProcessIds() { Calls.Add("ids"); return started ? [2] : []; }
+        public int CloseIdleBackgroundClients() { Calls.Add("close-idle"); return 0; }
+        public int ReleaseSingleton() { Calls.Add("release"); return 1; }
+        public string ClientExecutable(string? acceptedVersion) => "exe:" + acceptedVersion;
+        public void Start(string executable, string launchArgument) { Calls.Add("start"); Executable = executable; Argument = launchArgument; started = true; }
+    }
     private sealed class FakeDiscord : HttpMessageHandler
     {
         public readonly List<(string Url, string Body, string Method)> Requests = [];
@@ -79,15 +91,34 @@ internal static class Program
         Directory.CreateDirectory(dataFolder);
         Environment.SetEnvironmentVariable(RobloxAfkManager.Engine.AppFolders.OverrideVariable, dataFolder);
         AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { Directory.Delete(dataFolder, true); } catch (Exception) { } };
+        // The same wiring the app does at startup: secrets are protected with Windows DPAPI.
+        WindowsPlatform.Install();
         if (args.Contains("--remote-demo")) { RemoteBrowserFixture.RunAsync().GetAwaiter().GetResult(); return 0; }
         Test("Architecture: the engine references no user interface (WPF, Windows Forms) and not the app", () =>
         {
-            string[] banned = ["PresentationFramework", "PresentationCore", "WindowsBase", "System.Xaml", "System.Windows.Forms", "RobloxAfkManager"];
-            foreach (var assembly in new[] { typeof(RobloxAfkManager.Engine.LoginVault).Assembly, typeof(RobloxAfkManager.Core.IWindowSystem).Assembly })
+            string[] ui = ["PresentationFramework", "PresentationCore", "WindowsBase", "System.Xaml", "System.Windows.Forms", "RobloxAfkManager"];
+            var rules = new (System.Reflection.Assembly Assembly, string[] Banned)[]
+            {
+                (typeof(RobloxAfkManager.Core.IWindowSystem).Assembly, [.. ui, "RobloxAfkManager.Engine", "RobloxAfkManager.Platform.Windows"]),
+                (typeof(RobloxAfkManager.Engine.LoginVault).Assembly, [.. ui, "RobloxAfkManager.Platform.Windows"]),  // Windows only through interfaces
+                (typeof(WindowsPlatform).Assembly, ui),
+            };
+            foreach (var (assembly, banned) in rules)
             {
                 var bad = assembly.GetReferencedAssemblies().Select(a => a.Name).Where(n => banned.Contains(n)).ToArray();
                 Check(bad.Length == 0, $"{assembly.GetName().Name} references {string.Join(", ", bad)}");
             }
+        });
+        Test("Launch sequence on fake Roblox processes: idle background clients are cleared, the client is started on the private server, the new pid is returned", () =>
+        {
+            var clients = new FakeRobloxClients();
+            var launcher = new AccountLauncher(clients, _ => Task.FromResult<string?>("version-test"));
+            int pid = launcher.LaunchSafelyAsync("cookie", 74629631798007, CancellationToken.None, "ticket", "abc-123").GetAwaiter().GetResult();
+            Check(pid == 2, "the new client's pid was not returned: " + pid);
+            Check(clients.Calls.First() == "close-idle", "idle background clients were not cleared first: " + string.Join(",", clients.Calls));
+            Check(clients.Executable == "exe:version-test", "the accepted client version was not used");
+            Check(clients.Argument is { } arg && arg.Contains("RequestPrivateGame") && arg.Contains("linkCode%3Dabc-123") && arg.Contains("gameinfo:ticket"), "launch argument is wrong: " + clients.Argument);
+            Throws(() => launcher.LaunchSafelyAsync("cookie", 1, CancellationToken.None, "ticket", "bad code!").GetAwaiter().GetResult()); // an unexpected private server code is refused
         });
         Test("Preset layouts use the full working area without overlap", () =>
         {
@@ -153,7 +184,7 @@ internal static class Program
                 string Noise(int n) => string.Join(Environment.NewLine, Enumerable.Range(0, n).Select(i => $"{now:O},1,abc,6 [FLog::Output] filler line number {i}"));
                 string log = Path.Combine(root, "p.log");
                 File.WriteAllText(log, string.Join(Environment.NewLine, Enumerable.Range(0, 40).Select(i => Fail(now.AddSeconds(-i)))) + Environment.NewLine + Noise(2000) + Environment.NewLine);
-                var lookup = new RobloxAfkManager.App.Services.LogAccountNameLookup(root, _ => [process], (_, _) => Task.FromResult<IReadOnlyDictionary<long, string>>(new Dictionary<long, string>()));
+                var lookup = new RobloxAfkManager.Engine.LogAccountNameLookup(root, _ => [process], (_, _) => Task.FromResult<IReadOnlyDictionary<long, string>>(new Dictionary<long, string>()));
                 Check(lookup.CountAuthFailures(log, process, now) == 40);
                 Check(lookup.CountAuthFailures(log, process, now) == 40); // nothing new: no double counting
                 File.AppendAllText(log, string.Join(Environment.NewLine, Enumerable.Range(0, 5).Select(i => Fail(now))) + Environment.NewLine + Fail(now)); // last line unfinished
@@ -526,7 +557,7 @@ internal static class Program
         });
         Test("Private servers: Roblox's answer is read strictly", () =>
         {
-            static (long PlaceId, string LinkCode)? Read(string json) { using var doc = System.Text.Json.JsonDocument.Parse(json); return RobloxAfkManager.App.Services.AccountLauncher.ReadPrivateServer(doc.RootElement) is { } s ? (s.PlaceId, s.LinkCode) : null; }
+            static (long PlaceId, string LinkCode)? Read(string json) { using var doc = System.Text.Json.JsonDocument.Parse(json); return RobloxAfkManager.Engine.AccountLauncher.ReadPrivateServer(doc.RootElement) is { } s ? (s.PlaceId, s.LinkCode) : null; }
             Check(Read("""{"privateServerInviteData":{"status":"Valid","linkCode":"abc-123","placeId":8,"universeId":9}}""") is { PlaceId: 8, LinkCode: "abc-123" });
             Check(Read("""{"privateServerInviteData":{"status":"Expired","linkCode":"abc","placeId":8}}""") is null);
             Check(Read("""{"privateServerInviteData":{"status":"Valid","placeId":8}}""") is null);

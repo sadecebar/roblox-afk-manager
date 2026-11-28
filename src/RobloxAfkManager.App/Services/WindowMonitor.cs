@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Windows.Threading;
-using RobloxAfkManager.App.Native;
+using RobloxAfkManager.Platform.Windows;
 using RobloxAfkManager.Core;
 
 namespace RobloxAfkManager.App.Services;

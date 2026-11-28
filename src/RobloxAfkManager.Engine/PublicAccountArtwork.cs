@@ -1,10 +1,9 @@
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
-using System.Windows.Media.Imaging;
 using RobloxAfkManager.Core;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Engine;
 
 // Public metadata only; bounded memory caches, request sizes, response sizes and timeouts.
 public sealed class PublicAccountArtwork
@@ -74,16 +73,6 @@ public sealed class PublicAccountArtwork
     public static bool ValidPng(byte[] bytes) => bytes.Length is >= 24 and <= 131072 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) &&
         System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(16, 4)) is > 0 and <= 256 &&
         System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(20, 4)) is > 0 and <= 256;
-    public static BitmapSource? Decode(byte[]? bytes)
-    {
-        if (bytes is null || !ValidPng(bytes)) return null;
-        try
-        {
-            using var stream = new MemoryStream(bytes, false);
-            var image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad; image.DecodePixelWidth = 48; image.StreamSource = stream; image.EndInit(); image.Freeze(); return image;
-        }
-        catch (Exception ex) when (ex is IOException or NotSupportedException or ArgumentException or InvalidOperationException or FormatException or System.Runtime.InteropServices.COMException) { return null; }
-    }
     private static async Task<byte[]> GetAsync(string url, int maximum, CancellationToken cancellation)
     {
         using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);

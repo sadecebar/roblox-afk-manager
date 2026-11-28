@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Windows-only plumbing: window and process handling, log-file owners, the Roblox client processes, idle time and DPAPI.
+       No WPF: it implements interfaces that Engine and Core define, so the engine never calls Windows directly. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>RobloxAfkManager.Platform.Windows</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RobloxAfkManager.Core/RobloxAfkManager.Core.csproj" />
+    <ProjectReference Include="../RobloxAfkManager.Engine/RobloxAfkManager.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RobloxAfkManager" />
+    <InternalsVisibleTo Include="RobloxAfkManager.Tests" />
+  </ItemGroup>
+</Project>

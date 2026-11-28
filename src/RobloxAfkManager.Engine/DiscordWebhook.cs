@@ -39,7 +39,7 @@ public sealed partial class DiscordWebhook : IDisposable
     private readonly ISecretProtector secrets;
     public DiscordWebhook(string? folder = null, HttpMessageHandler? handler = null, TimeSpan? batchDelay = null, IAppLog? log = null, TimeSpan? boardInterval = null, ISecretProtector? protector = null)
     {
-        secrets = protector ?? DpapiSecretProtector.Instance;
+        secrets = SecretProtection.Resolve(protector);
         this.folder = folder ?? AppFolders.Data;
         path = Path.Combine(this.folder, "webhook.dat");
         this.boardInterval = boardInterval ?? TimeSpan.FromSeconds(10);

@@ -136,7 +136,7 @@ internal static class AccountNameTests
         var expected = new ProcessIdentity(process.Id, process.StartTime.ToUniversalTime().Ticks);
         Program.Check(LogFileOwners.Read(fixture.Log).Contains(expected), "Restart Manager did not match the held log to its exact process identity");
         var bytes = System.Text.Encoding.UTF8.GetBytes(JoinLine(77)); stream.Write(bytes); stream.Flush();
-        var resolver = new LogAccountNameLookup(fixture.Directory, usernames: (ids, _) =>
+        var resolver = new LogAccountNameLookup(fixture.Directory, LogFileOwners.Read, usernames: (ids, _) =>
             Task.FromResult<IReadOnlyDictionary<long, string>>(ids.ToDictionary(id => id, _ => "FixtureRanger")));
         Program.Check(resolver.ResolveAsync([expected], default).GetAwaiter().GetResult().GetValueOrDefault(expected) == "FixtureRanger",
             "Native owner-to-account lookup did not resolve the synthetic fixture");

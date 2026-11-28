@@ -4,7 +4,7 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using RobloxAfkManager.Core;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Platform.Windows;
 
 // Query only. Never calls Restart Manager shutdown/restart operations or opens game memory.
 public static class LogFileOwners

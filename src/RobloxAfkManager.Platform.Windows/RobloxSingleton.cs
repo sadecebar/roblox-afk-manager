@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Platform.Windows;
 
 // Roblox clients share a named event, ROBLOX_singletonEvent. When a new client starts it signals that event, and the
 // client that is already running leaves its game. Closing that one handle inside a running client (what Process

@@ -3,7 +3,7 @@ using System.Text;
 using RobloxAfkManager.Core;
 using Microsoft.Win32.SafeHandles;
 
-namespace RobloxAfkManager.App.Native;
+namespace RobloxAfkManager.Platform.Windows;
 
 internal static class NativeMethods
 {

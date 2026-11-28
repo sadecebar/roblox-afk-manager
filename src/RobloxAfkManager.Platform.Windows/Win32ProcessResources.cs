@@ -5,7 +5,7 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 using RobloxAfkManager.Core;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Platform.Windows;
 
 public sealed class Win32ProcessResources : IProcessResourceSystem, IWorkingSetSystem
 {
