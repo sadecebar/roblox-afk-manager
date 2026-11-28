@@ -11,6 +11,8 @@ public interface IClientView
     SessionReport? Session { get; }
     bool IsIgnored { get; }
     string Label { get; }
+    // The window's own state, for example "Not responding".
+    string Status { get; }
 }
 
 // What the engine services still borrow from the dashboard while behaviour moves out of it (docs/ARCHITECTURE-PLAN.md, M3).
@@ -23,6 +25,8 @@ public interface IEngineHost
     IReadOnlySet<long> RunningAccounts { get; }
     // The saved card position of an account, for the server split ("dashboard order"). Null when it has no profile.
     int? ProfileOrder(long userId);
+    // Every saved account profile (names, last seen), for the status board.
+    IReadOnlyCollection<AccountProfile> Profiles { get; }
     // The name shown for an account (its card label, saved username or a fallback).
     string NameOf(long userId);
     // True while the dashboard is refreshing or the manager is closing; automatic fixes wait.

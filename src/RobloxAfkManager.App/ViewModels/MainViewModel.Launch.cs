@@ -175,6 +175,7 @@ public sealed partial class MainViewModel
     IReadOnlySet<long> IEngineHost.RunningAccounts => runningAccounts;
     int? IEngineHost.ProfileOrder(long userId) => profiles.TryGetValue(userId, out var p) ? p.Order : null;
     string IEngineHost.NameOf(long userId) => NameOf(userId);
+    IReadOnlyCollection<AccountProfile> IEngineHost.Profiles => profiles.Values;
     bool IEngineHost.Busy => Busy;
     bool IEngineHost.Disposed => disposed;
     bool IEngineHost.OtherFixRunning => keeper.Working;
