@@ -13,7 +13,13 @@ internal static class Program
         public readonly List<(string Cookie, long Place)> Launched = [];
         public Task<RobloxAfkManager.App.Services.SavedLogin> IdentifyAsync(string cookie, CancellationToken token) => Task.FromResult(new RobloxAfkManager.App.Services.SavedLogin(1, "x"));
         public Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token) => Task.FromResult("ticket");
-        public Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null) { lock (Launched) Launched.Add((cookie, placeId)); return Task.FromResult(4242); }
+        public readonly List<string?> LinkCodes = [];
+        public readonly List<DateTime> Times = [];
+        public readonly List<string> Resolved = [];
+        public Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null) { lock (Launched) { Launched.Add((cookie, placeId)); LinkCodes.Add(linkCode); Times.Add(DateTime.UtcNow); } return Task.FromResult(4242); }
+        // Each share code maps to its own place and link code, so a test can tell the two servers apart.
+        public Task<RobloxAfkManager.App.Services.PrivateServer> ResolveShareLinkAsync(string cookie, string shareCode, CancellationToken token)
+        { lock (Resolved) Resolved.Add(shareCode); return Task.FromResult(new RobloxAfkManager.App.Services.PrivateServer(5000 + shareCode[0], "link-" + shareCode[..4])); }
     }
     private sealed class FakeDiscord : HttpMessageHandler
     {
@@ -463,6 +469,99 @@ internal static class Program
                 Check(stuck.Activity.Any(m => m.Contains("Lost connection") && m.Contains("reopened")), "the fix was not written down with its cause");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        });
+        Test("Private server links: the share link or bare code is accepted, other links are not", () =>
+        {
+            string a = "45418624af634644ad2617ba325e876f", b = "76b34ea6a6eb5d48a33a73d4efa6a7c6";
+            Check(PrivateServerLink.ParseCode("https://www.roblox.com/share?code=" + a + "&type=Server") == a);
+            Check(PrivateServerLink.ParseCode("  https://roblox.com/share?type=Server&code=" + b.ToUpperInvariant() + "  ") == b);
+            Check(PrivateServerLink.ParseCode(a) == a);
+            Check(PrivateServerLink.ParseCode("https://www.roblox.com/share?code=" + a + "&type=ExperienceDetails") is null, "a non-server share link was accepted");
+            Check(PrivateServerLink.ParseCode("https://www.roblox.com/games/8") is null);
+            Check(PrivateServerLink.ParseCode("https://evil.example/share?code=" + a + "&type=Server") is null, "another site was accepted");
+            Check(PrivateServerLink.ParseCode("https://www.roblox.com/share?code=zzzz&type=Server") is null);
+            Check(PrivateServerLink.ParseCode("") is null && PrivateServerLink.ParseCode(null) is null);
+        });
+        Test("Private servers: the first N accounts in dashboard order go to server 1 and the rest to server 2", () =>
+        {
+            var order = new Dictionary<long, int> { [10] = 0, [20] = 1, [30] = 2, [40] = 3, [50] = 4, [60] = 5, [70] = 6, [80] = 7 };
+            var positions = ServerAssignment.Positions(new long[] { 80, 70, 60, 50, 40, 30, 20, 10, 99 }, order); // 99 has no saved order yet
+            Check(positions[10] == 1 && positions[60] == 6 && positions[70] == 7 && positions[99] == 9);
+            Check(Enumerable.Range(1, 6).All(p => ServerAssignment.ServerFor(p, 6) == 1) && ServerAssignment.ServerFor(7, 6) == 2 && ServerAssignment.ServerFor(int.MaxValue, 6) == 2);
+            // Position only depends on the saved order, so an account that is not running keeps its place.
+            var without = ServerAssignment.Positions(new long[] { 10, 20, 30, 40, 50, 60, 70, 80 }, order);
+            Check(without[70] == 7 && without[10] == 1);
+        });
+        Test("Private servers: Roblox's answer is read strictly", () =>
+        {
+            static (long PlaceId, string LinkCode)? Read(string json) { using var doc = System.Text.Json.JsonDocument.Parse(json); return RobloxAfkManager.App.Services.AccountLauncher.ReadPrivateServer(doc.RootElement) is { } s ? (s.PlaceId, s.LinkCode) : null; }
+            Check(Read("""{"privateServerInviteData":{"status":"Valid","linkCode":"abc-123","placeId":8,"universeId":9}}""") is { PlaceId: 8, LinkCode: "abc-123" });
+            Check(Read("""{"privateServerInviteData":{"status":"Expired","linkCode":"abc","placeId":8}}""") is null);
+            Check(Read("""{"privateServerInviteData":{"status":"Valid","placeId":8}}""") is null);
+            Check(Read("""{"something":"else"}""") is null);
+        });
+        Test("Private servers: opening, restarting and reopening send each account to its own server", () =>
+        {
+            string a = "45418624af634644ad2617ba325e876f", b = "76b34ea6a6eb5d48a33a73d4efa6a7c6";
+            string root = Path.Combine(Path.GetTempPath(), "rafk-servers-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat"));
+                for (int i = 1; i <= 3; i++) vault.Save(i, "acc" + i, new string((char)('a' + i), 130));
+                var launcher = new RecordingLauncher();
+                using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
+                Check(!vm.HasLaunchTarget);
+                vm.PrivateServer1Link = "https://www.roblox.com/share?code=" + a + "&type=Server";
+                vm.PrivateServer2Link = "https://www.roblox.com/share?code=" + b + "&type=Server";
+                Check(vm.HasLaunchTarget && vm.AccountsOnServer1 == 6); vm.AccountsOnServer1 = 2; vm.LaunchSpacingSeconds = 5;
+                vm.PrivateServer1Link = "not a link"; Check(vm.PrivateServer1Link.Contains(a), "a bad link replaced a good one");
+                vm.OpenClosedCommand.Execute(null);
+                for (int i = 0; i < 250 && launcher.Launched.Count < 3; i++) Thread.Sleep(100);
+                Check(launcher.Launched.Count == 3, "not every account was opened: " + launcher.Launched.Count);
+                Check(launcher.Launched.Take(2).All(l => l.Place == 5000 + a[0]) && launcher.LinkCodes.Take(2).All(c => c == "link-" + a[..4]), "accounts 1-2 did not join server 1");
+                Check(launcher.Launched.Skip(2).All(l => l.Place == 5000 + b[0]) && launcher.LinkCodes.Skip(2).All(c => c == "link-" + b[..4]), "account 3 did not join server 2");
+                for (int i = 1; i < launcher.Times.Count; i++) Check(launcher.Times[i] - launcher.Times[i - 1] >= TimeSpan.FromSeconds(4.5), $"accounts {i} and {i + 1} started only {(launcher.Times[i] - launcher.Times[i - 1]).TotalSeconds:0.0}s apart");
+                Check(launcher.Resolved.Count == 2, "each share link should be resolved once, not per account: " + launcher.Resolved.Count);
+                // Survives a restart of the manager.
+                using var again = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(), loginVault: vault, settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
+                Check(again.PrivateServer1Link.Contains(a) && again.PrivateServer2Link.Contains(b) && again.AccountsOnServer1 == 2);
+                // Changing the split moves accounts.
+                again.AccountsOnServer1 = 1; Check(again.ServerSummary.Contains("first 1"));
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+        });
+        Test("Reconnect all: closes every running account with a saved login, waits, then reopens it on its server; leaves the rest alone", () =>
+        {
+            string a = "45418624af634644ad2617ba325e876f";
+            string root = Path.Combine(Path.GetTempPath(), "rafk-reconnect-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddMinutes(-5).Ticks); var launcher = new RecordingLauncher();
+                using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new FixedAccountLookup(77), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { ReconnectDelay = TimeSpan.FromMilliseconds(600) };
+                vm.PrivateServer1Link = a;
+                void Refresh() { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(80); }
+                for (int i = 0; i < 40 && vm.Clients.FirstOrDefault()?.AccountId != 77; i++) Refresh();
+                Check(vm.Clients[0].AccountId == 77, "account was not identified");
+                int asked = 0; vm.ConfirmReconnect = n => { asked = n; return true; };
+                vm.ReconnectAllCommand.Execute(null);
+                var started = DateTime.UtcNow;
+                for (int i = 0; i < 100 && launcher.Launched.Count == 0; i++) Thread.Sleep(50);
+                var waited = DateTime.UtcNow - started;
+                Check(asked == 1, "the person was not asked first");
+                Check(fake.Closing.Count == 1, "the running account was not closed");
+                Check(launcher.Launched.Count == 1 && launcher.LinkCodes[0] == "link-" + a[..4] && launcher.Launched[0].Place == 5000 + a[0], "it was not reopened on its private server");
+                Check(waited >= TimeSpan.FromMilliseconds(500), $"it reopened before the wait was over ({waited.TotalMilliseconds:0} ms)");
+                Check(vm.Activity.Any(m => m.Message.Contains("Reconnect")), "reconnect was not written down");
+                // Declining does nothing.
+                var closingBefore = fake.Closing.Count; vm.ConfirmReconnect = _ => false;
+                vm.ReconnectAllCommand.Execute(null); Thread.Sleep(300);
+                Check(fake.Closing.Count == closingBefore && launcher.Launched.Count == 1, "closed accounts although the person said no");
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
         });
         Test("Sleep mode counts the person as away even while they use the PC, and toggles back to automatic", () =>
         {

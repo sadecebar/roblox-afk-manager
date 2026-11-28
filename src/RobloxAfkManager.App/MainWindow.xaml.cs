@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = this.viewModel = viewModel;
+        viewModel.ConfirmReconnect = ConfirmReconnectAll;
         SettingsPopup.Opened += (_, _) => AnimateIn(SettingsPopup);
         foreach (var popup in new[] { IgnoredPopup, NamePopup, ActivityPopup, OfflinePopup })
         {
@@ -88,6 +89,9 @@ public partial class MainWindow : Window
     }
     private void ClearBoardChannel_Click(object sender, RoutedEventArgs e) => viewModel.ClearBoardChannel();
     private void ClearDiscord_Click(object sender, RoutedEventArgs e) { DiscordUserBox.Clear(); viewModel.ClearDiscord(); }
+    private bool ConfirmReconnectAll(int count) => MessageBox.Show(this,
+        $"This closes {count} account(s) that have a saved login, waits a minute so the private servers empty and reset, then reconnects each one to its private server.\n\nClients that are ignored or have no saved login stay open, and a private server with someone still in it will not reset.\n\nContinue?",
+        "Reconnect all accounts", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
     private void Backup_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Back up manager settings", FileName = "RobloxAfkManager-settings.json", Filter = "Settings backup (*.json)|*.json" };

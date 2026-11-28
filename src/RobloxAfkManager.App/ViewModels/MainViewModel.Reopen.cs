@@ -51,10 +51,10 @@ public sealed partial class MainViewModel
         if (autoReopen && IsAway)
         {
             var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
-            foreach (var id in previouslyRunning.Where(id => !current.ContainsKey(id) && saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id)))
+            foreach (var id in previouslyRunning.Where(id => !current.ContainsKey(id) && saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id) && !reconnectingIds.Contains(id)))
                 pendingReopen[id] = new(accountLabels.GetValueOrDefault(id, "Account"), now, false, null);
             foreach (var (id, tile) in current)
-                if (saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id)
+                if (saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id) && !reconnectingIds.Contains(id)
                     && tile.Session is { Phase: SessionPhase.Disconnected, EventAt: { } at } && now - at >= KickedDelay)
                     pendingReopen[id] = new(tile.Label, now, true, tile.Identity, tile.Session.Reason);
         }
@@ -69,7 +69,7 @@ public sealed partial class MainViewModel
 
     private async Task ReopenAwayAsync()
     {
-        if (!autoReopen || reopening || recovering || launching || Busy || disposed || gamePlaceId == 0 || pendingReopen.Count == 0) return;
+        if (!autoReopen || reopening || recovering || launching || Busy || disposed || !HasLaunchTarget || pendingReopen.Count == 0) return;
         if (!IsAway) { pendingReopen.Clear(); return; } // you're back: leave it to you
         var now = DateTimeOffset.UtcNow;
         if (now - lastReopenAt < LaunchSpacing) return;
@@ -95,13 +95,14 @@ public sealed partial class MainViewModel
         {
             string cookie = vault.Cookie(due) ?? throw new InvalidOperationException("The saved login could not be read.");
             // Check the login works before touching a running client, so a dead login never costs a client.
-            string ticket = await launcher.PrepareAsync(cookie, gamePlaceId, CancellationToken.None);
+            var plan = await PlanLaunchAsync(due, cookie);
+            string ticket = await launcher.PrepareAsync(cookie, plan.PlaceId, CancellationToken.None);
             if (pending.CloseFirst && pending.Identity is { } identity)
             {
                 var closed = await Task.Run(() => manager.CloseClient(identity));
                 if (!closed.Success) throw new InvalidOperationException(closed.Message);
             }
-            int pid = await launcher.LaunchSafelyAsync(cookie, gamePlaceId, CancellationToken.None, ticket);
+            int pid = await LaunchOneAsync(cookie, plan, ticket);
             launchedPids[pid] = due; launchedAt[due] = DateTimeOffset.UtcNow;
             // Sent to Discord as a plain "what was done" message; the problem alert itself turns green when the account has really rejoined.
             AddActivity(pending.Label, (pending.CloseFirst

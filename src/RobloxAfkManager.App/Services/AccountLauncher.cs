@@ -74,11 +74,17 @@ public sealed class LoginVault(string? path = null)
     internal static byte[] Unprotect(byte[] data) => Transform(data, false);
 }
 
+// A private server as the Roblox client needs to join it.
+public sealed record PrivateServer(long PlaceId, string LinkCode);
+
 public interface IAccountLauncher
 {
     Task<SavedLogin> IdentifyAsync(string cookie, CancellationToken token);
     Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token);
-    Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null);
+    // linkCode joins that private server of the place instead of a public server.
+    Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null);
+    // Turns the code of a roblox.com/share?code=…&type=Server link into the place and link code to join. Any saved account can ask.
+    Task<PrivateServer> ResolveShareLinkAsync(string cookie, string shareCode, CancellationToken token);
 }
 
 // Starts Roblox as a specific account using Roblox's own one-time authentication ticket flow.
@@ -94,12 +100,12 @@ public sealed class AccountLauncher : IAccountLauncher, IDisposable
     }
 
     // Starts one account and returns the new client's process id. Only "Roblox never started" is an error.
-    public async Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null)
+    public async Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null)
     {
         var before = RobloxProcessIds();
         // Running clients must not hear the new client's start signal, so close their singleton event first.
         if (before.Length > 0) RobloxSingleton.Release();
-        await LaunchAsync(cookie, placeId, token, readyTicket);
+        await LaunchAsync(cookie, placeId, token, readyTicket, linkCode);
         var deadline = DateTime.UtcNow.AddSeconds(60);
         int[] fresh = [];
         while (DateTime.UtcNow < deadline && fresh.Length == 0)
@@ -146,11 +152,15 @@ public sealed class AccountLauncher : IAccountLauncher, IDisposable
 
     public Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token) => TicketAsync(cookie, placeId, token);
 
-    public async Task LaunchAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null)
+    public async Task LaunchAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null)
     {
         string ticket = readyTicket ?? await TicketAsync(cookie, placeId, token);
         string tracker = Random.Shared.NextInt64(100_000_000_000, 130_000_000_000).ToString();
-        string launcher = Uri.EscapeDataString($"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGame&browserTrackerId={tracker}&placeId={placeId}&isPlayTogetherGame=false");
+        // The link code is the one Roblox itself returned for the share link (letters, digits, dashes), never text typed by the person.
+        if (linkCode is not null && !linkCode.All(c => char.IsLetterOrDigit(c) || c == '-' || c == '_')) throw new InvalidOperationException("Roblox returned an unexpected private server code.");
+        string request = linkCode is null ? "RequestGame" : "RequestPrivateGame";
+        string privatePart = linkCode is null ? "" : $"&linkCode={linkCode}";
+        string launcher = Uri.EscapeDataString($"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request={request}&browserTrackerId={tracker}&placeId={placeId}{privatePart}&isPlayTogetherGame=false");
         string uri = $"roblox-player:1+launchmode:play+gameinfo:{ticket}+launchtime:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}+placelauncherurl:{launcher}+browsertrackerid:{tracker}+robloxLocale:en_us+gameLocale:en_us+channel:+LaunchExp:InApp";
         // Never go through the roblox-player: protocol handler. That is RobloxPlayerInstaller.exe, which treats the
         // launch as an install/update and terminates every running RobloxPlayerBeta.exe. Start the client itself.
@@ -180,6 +190,37 @@ public sealed class AccountLauncher : IAccountLauncher, IDisposable
             ? new DirectoryInfo(versions).EnumerateDirectories().Select(d => Path.Combine(d.FullName, "RobloxPlayerBeta.exe")).Where(File.Exists).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
             : null;
         return newest ?? throw new InvalidOperationException("Roblox isn't installed for this Windows user. Install it from roblox.com once, then try again.");
+    }
+
+    public async Task<PrivateServer> ResolveShareLinkAsync(string cookie, string shareCode, CancellationToken token)
+    {
+        if (shareCode.Length != 32 || !shareCode.All(Uri.IsHexDigit)) throw new ArgumentException("That is not a private server share code.");
+        string? csrf = null;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://apis.roblox.com/sharelinks/v1/resolve-link")
+            { Content = new StringContent(JsonSerializer.Serialize(new { linkId = shareCode, linkType = "Server" }), Encoding.UTF8, "application/json") };
+            request.Headers.TryAddWithoutValidation("Cookie", ".ROBLOSECURITY=" + cookie);
+            if (csrf is not null) request.Headers.TryAddWithoutValidation("x-csrf-token", csrf);
+            using var response = await Http.SendAsync(request, token);
+            if (response.StatusCode == HttpStatusCode.Forbidden && csrf is null && response.Headers.TryGetValues("x-csrf-token", out var tokens)) { csrf = tokens.First(); continue; }
+            if (response.StatusCode == HttpStatusCode.Unauthorized) throw new InvalidOperationException("The saved session has expired. Add this account again.");
+            if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"Roblox would not open the private server link ({(int)response.StatusCode}). It may have been reset or deleted.");
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+            if (ReadPrivateServer(json.RootElement) is { } server) return server;
+            throw new InvalidOperationException("That private server link is no longer valid. Copy a fresh link from the server's page.");
+        }
+        throw new InvalidOperationException("Roblox did not accept the private server link request.");
+    }
+
+    // The answer nests the data under privateServerInviteData; only a "Valid" link with a place and a code is accepted.
+    public static PrivateServer? ReadPrivateServer(JsonElement root)
+    {
+        if (!root.TryGetProperty("privateServerInviteData", out var data) || data.ValueKind != JsonValueKind.Object) return null;
+        if (data.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String && !string.Equals(status.GetString(), "Valid", StringComparison.OrdinalIgnoreCase)) return null;
+        if (!data.TryGetProperty("placeId", out var place) || !place.TryGetInt64(out long placeId) || placeId <= 0) return null;
+        if (!data.TryGetProperty("linkCode", out var code) || code.ValueKind != JsonValueKind.String || code.GetString() is not { Length: > 0 and <= 128 } linkCode) return null;
+        return new(placeId, linkCode);
     }
 
     private static async Task<string> TicketAsync(string cookie, long placeId, CancellationToken token)

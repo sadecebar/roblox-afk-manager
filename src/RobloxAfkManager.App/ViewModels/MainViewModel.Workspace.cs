@@ -145,6 +145,7 @@ public sealed partial class MainViewModel
             c.IsIgnored || (RequiresProfileIdentification && c.AccountId is null), c.Status, c.Session)), DateTimeOffset.UtcNow);
         foreach (var raw in events)
         {
+            if (reconnectingLabels.Contains(raw.Label)) { Journal(raw); continue; } // Reconnect all closes windows on purpose
             var entry = Explain(raw);
             Journal(entry);
             Activity.Insert(0, entry); while (Activity.Count > 100) Activity.RemoveAt(Activity.Count - 1);

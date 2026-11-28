@@ -79,7 +79,7 @@ public sealed partial class MainViewModel
     private void RaiseIndicators() { Raise(nameof(AlertsState)); Raise(nameof(AlertsLabel)); Raise(nameof(AlertsHint)); Raise(nameof(ReopenState)); Raise(nameof(ReopenLabel)); Raise(nameof(ReopenHint)); }
     public void ToggleReopen()
     {
-        if (!autoReopen && gamePlaceId == 0) { Warning = true; Message = "Set a game first (Settings → Accounts → Game), then turn automatic rejoin on."; return; }
+        if (!autoReopen && !HasLaunchTarget) { Warning = true; Message = "Set a game first (Settings → Accounts → Game), then turn automatic rejoin on."; return; }
         if (!autoReopen && vault.Logins.Count == 0) { Warning = true; Message = "Automatic rejoin needs a saved login. Add one in Settings → Accounts."; return; }
         AutoReopen = !autoReopen;
     }

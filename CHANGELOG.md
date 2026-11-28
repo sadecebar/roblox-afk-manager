@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Private servers and Reconnect all
+- **Two private servers.** Paste two `roblox.com/share?code=…&type=Server` links in Settings → Accounts. The first N accounts (6 by default, in dashboard order) join private server 1 and the rest join private server 2. Opening, the Restart button, auto-reopen and the other automatic fixes all send each account to its own server. With only one link set, every account joins it.
+- **Reconnect all** (button next to Refresh). It closes every running account that has a saved login, waits a minute so the private servers empty and reset, then reconnects each account to its server. It asks first, checks every login and link before closing anything, and does not raise false alerts for the windows it closes. Ignored clients and clients without a saved login stay open, and a server with someone still in it will not reset (the activity log says so).
+- **Launches never overlap.** Every launch, from any button or automatic fix, waits until the previous one finished and the "Seconds between accounts" gap (5 to 120 seconds, 10 by default) has passed, so two accounts are never started at the same moment.
+
 ## v0.12.0: Several clients at once, disconnect detection and restart, incident log
 
 Released 2026-11-25. Reopening a disconnected account and pinging only for real problems both work now. Auto-reopen is still off until you switch it on.
