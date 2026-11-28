@@ -1,13 +1,13 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using RobloxAfkManager.App.Services;
+using System.ComponentModel;
 using RobloxAfkManager.Core;
 
 namespace RobloxAfkManager.App.ViewModels;
 
 public sealed record LayoutOption(string Label, int Columns, int Rows);
 
-public sealed partial class MainViewModel : ObservableObject, IDisposable
+public sealed partial class MainViewModel : ObservableObject, IDisposable, IEngineHost
 {
     private readonly IWindowSystem windows;
     private readonly WindowManager manager;
@@ -189,7 +189,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ = RecoverSignedOutAsync();
         _ = ReopenAwayAsync();
         _ = CloseDuplicateWindowsAsync();
-        _ = FallbackStuckPrivateJoinsAsync();
+        _ = launch.FallbackStuckPrivateJoinsAsync();
     }
 
     private async Task ReadStateAsync()

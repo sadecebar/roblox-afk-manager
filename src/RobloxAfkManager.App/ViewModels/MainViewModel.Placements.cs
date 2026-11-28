@@ -8,7 +8,6 @@ public sealed partial class MainViewModel
 {
     // Roblox positions and sizes its own window while it loads; moving it earlier gets undone.
     private static readonly TimeSpan PlacementDelay = TimeSpan.FromSeconds(8);
-    private readonly Dictionary<int, long> launchedPids = [];
     private readonly HashSet<ProcessIdentity> placed = [];
     private bool placing;
     public AsyncCommand SaveLayoutCommand { get; private set; } = null!;
@@ -72,7 +71,7 @@ public sealed partial class MainViewModel
         {
             var process = ProcessIdentity.From(tile.Identity);
             if (tile.IsIgnored || placed.Contains(process)) continue;
-            long? id = tile.AccountId ?? (launchedPids.TryGetValue(tile.ProcessId, out var launched) ? launched : null);
+            long? id = tile.AccountId ?? launch.LaunchedAccount(tile.ProcessId);
             if (id is null || !profiles.TryGetValue(id.Value, out var profile) || profile.Window is not { } place) continue;
             var age = now - new DateTimeOffset(new DateTime(tile.Identity.StartTimeUtcTicks, DateTimeKind.Utc));
             if (age < PlacementDelay) continue;

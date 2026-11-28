@@ -53,10 +53,10 @@ public sealed partial class MainViewModel
         if (autoReopen && IsAway)
         {
             var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
-            foreach (var id in previouslyRunning.Where(id => !current.ContainsKey(id) && saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id) && !reconnectingIds.Contains(id)))
+            foreach (var id in previouslyRunning.Where(id => !current.ContainsKey(id) && saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id) && !launch.IsReconnecting(id)))
                 pendingReopen[id] = new(accountLabels.GetValueOrDefault(id, "Account"), now, false, null);
             foreach (var (id, tile) in current)
-                if (saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id) && !reconnectingIds.Contains(id)
+                if (saved.Contains(id) && !pendingReopen.ContainsKey(id) && !gaveUp.Contains(id) && !launch.IsReconnecting(id)
                     && tile.Session is { Phase: SessionPhase.Disconnected, EventAt: { } at } && now - at >= KickedDelay)
                     pendingReopen[id] = new(tile.Label, now, true, tile.Identity, tile.Session.Reason);
         }
@@ -74,7 +74,7 @@ public sealed partial class MainViewModel
     private bool closingDuplicates;
     private async Task CloseDuplicateWindowsAsync()
     {
-        if (!autoReopen || closingDuplicates || reopening || recovering || launching || Busy || disposed || !IsAway) return;
+        if (!autoReopen || closingDuplicates || reopening || recovering || launch.Launching || Busy || disposed || !IsAway) return;
         var now = DateTimeOffset.UtcNow;
         var stale = Clients.Where(c => !c.IsIgnored && c.AccountId is { } id && c.Session is { Phase: SessionPhase.Disconnected, EventAt: { } at } && now - at >= KickedDelay
             && Clients.Any(o => !ReferenceEquals(o, c) && o.AccountId == id && o.Session?.Phase != SessionPhase.Disconnected)).ToArray();
@@ -95,12 +95,12 @@ public sealed partial class MainViewModel
 
     private async Task ReopenAwayAsync()
     {
-        if (!autoReopen || reopening || recovering || launching || Busy || disposed || !HasLaunchTarget || pendingReopen.Count == 0) return;
+        if (!autoReopen || reopening || recovering || launch.Launching || Busy || disposed || !HasLaunchTarget || pendingReopen.Count == 0) return;
         if (!IsAway) { pendingReopen.Clear(); return; } // you're back: leave it to you
         var now = DateTimeOffset.UtcNow;
         if (now - lastReopenAt < LaunchSpacing) return;
         // A disconnected client still has its window open, so "running" must not block it: only a launch that just happened does.
-        bool Blocked(KeyValuePair<long, Pending> p) => p.Value.CloseFirst ? launchedAt.TryGetValue(p.Key, out var at) && now - at < LaunchGrace : IsActive(p.Key, now);
+        bool Blocked(KeyValuePair<long, Pending> p) => p.Value.CloseFirst ? launch.IsStarting(p.Key, now) : launch.IsActive(p.Key, now);
         var due = pendingReopen.Where(p => now - p.Value.Since >= (p.Value.CloseFirst ? TimeSpan.Zero : ReopenAfter) && !Blocked(p)).Select(p => p.Key).FirstOrDefault();
         if (due == 0) return;
         var pending = pendingReopen[due];
@@ -119,17 +119,8 @@ public sealed partial class MainViewModel
         reopening = true; lastReopenAt = now; own.Enqueue(now); reopenLog.Enqueue(now); recoveredAt[due] = now;
         try
         {
-            string cookie = vault.Cookie(due) ?? throw new InvalidOperationException("The saved login could not be read.");
-            // Check the login works before touching a running client, so a dead login never costs a client.
-            var plan = await PlanLaunchAsync(due, cookie);
-            string ticket = await launcher.PrepareAsync(cookie, plan.PlaceId, CancellationToken.None);
-            if (pending.CloseFirst && pending.Identity is { } identity)
-            {
-                var closed = await Task.Run(() => manager.CloseClient(identity));
-                if (!closed.Success) throw new InvalidOperationException(closed.Message);
-            }
-            int pid = await LaunchOneAsync(cookie, plan, ticket, due, replacing: pending.CloseFirst);
-            launchedPids[pid] = due; launchedAt[due] = DateTimeOffset.UtcNow;
+            // The login is checked before a running client is touched, so a dead login never costs a client.
+            await launch.ReplaceAsync(due, pending.CloseFirst ? pending.Identity : null, replacing: pending.CloseFirst);
             // Sent to Discord as a plain "what was done" message; the problem alert itself turns green when the account has really rejoined.
             AddActivity(pending.Label, (pending.CloseFirst
                 ? $"Stayed disconnected for {(int)KickedDelay.TotalMinutes} minutes{(pending.Reason is { } why ? $" ({why.TrimEnd('.')})" : "")}. Fix: closed the stuck client and reopened it from its saved login."

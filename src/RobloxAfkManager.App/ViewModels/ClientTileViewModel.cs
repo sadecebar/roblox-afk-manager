@@ -1,10 +1,9 @@
 using RobloxAfkManager.Core;
 using System.Windows.Media;
-using RobloxAfkManager.App.Services;
 
 namespace RobloxAfkManager.App.ViewModels;
 
-public sealed class ClientTileViewModel(ClientWindow client, int slot) : ObservableObject
+public sealed class ClientTileViewModel(ClientWindow client, int slot) : ObservableObject, IClientView
 {
     private ClientWindow client = client;
     private readonly int slot = slot;

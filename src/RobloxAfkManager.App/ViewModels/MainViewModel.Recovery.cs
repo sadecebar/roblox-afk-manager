@@ -26,7 +26,7 @@ public sealed partial class MainViewModel
 
     // The per-client Restart button: always allowed, no cooldown or hourly cap, because the person asked for it.
     public AsyncCommand RestartClientCommand { get; private set; } = null!;
-    private bool CanRestart(object? parameter) => parameter is ClientTileViewModel { AccountId: { } id } && vault.Logins.Any(l => l.UserId == id) && HasLaunchTarget && !recovering && !reopening && !launching && !Busy;
+    private bool CanRestart(object? parameter) => parameter is ClientTileViewModel { AccountId: { } id } && vault.Logins.Any(l => l.UserId == id) && HasLaunchTarget && !recovering && !reopening && !launch.Launching && !Busy;
     private async Task RestartClientAsync(object? parameter)
     {
         if (parameter is not ClientTileViewModel { AccountId: { } account } tile || !CanRestart(parameter)) return;
@@ -34,14 +34,7 @@ public sealed partial class MainViewModel
         string label = tile.Label;
         try
         {
-            string cookie = vault.Cookie(account) ?? throw new InvalidOperationException("The saved login could not be read.");
-            var plan = await PlanLaunchAsync(account, cookie);
-            string ticket = await launcher.PrepareAsync(cookie, plan.PlaceId, CancellationToken.None);
-            var identity = tile.Identity;
-            var closed = await Task.Run(() => manager.CloseClient(identity));
-            if (!closed.Success) throw new InvalidOperationException(closed.Message);
-            int pid = await LaunchOneAsync(cookie, plan, ticket, account, replacing: true);
-            launchedPids[pid] = account; launchedAt[account] = DateTimeOffset.UtcNow;
+            await launch.ReplaceAsync(account, tile.Identity);
             AddActivity(label, "You restarted this account. Closed the client and reopened it from its saved login.", false, announce: false, info: true);
             Warning = false; Message = $"{label} was restarted.";
         }
@@ -71,13 +64,13 @@ public sealed partial class MainViewModel
 
     private async Task RecoverSignedOutAsync()
     {
-        if (!(AutoRecover || AutoRestartQuiet) || !HasLaunchTarget || reopening || recovering || launching || Busy || disposed) return;
+        if (!(AutoRecover || AutoRestartQuiet) || !HasLaunchTarget || reopening || recovering || launch.Launching || Busy || disposed) return;
         var now = DateTimeOffset.UtcNow;
         var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
         var victim = Clients.FirstOrDefault(c => !c.IsIgnored && c.AccountId is { } id && saved.Contains(id)
             && (c.Session is { AuthFailures: >= AuthFailureThreshold } || (AutoRestartQuiet && c.IsQuiet))
             && !(recoveredAt.TryGetValue(id, out var at) && now - at < RecoveryCooldown)
-            && !(launchedAt.TryGetValue(id, out var launched) && now - launched < TimeSpan.FromMinutes(10)) // a fresh client is still settling
+            && !(launch.LaunchedAt(id) is { } launched && now - launched < TimeSpan.FromMinutes(10)) // a fresh client is still settling
             && Clients.Count(o => o.AccountId == id) == 1);                                                  // two windows: see CloseDuplicateWindowsAsync
         if (victim?.AccountId is not { } account) return;
         bool quiet = victim.Session is not { AuthFailures: >= AuthFailureThreshold };
@@ -93,15 +86,8 @@ public sealed partial class MainViewModel
         string label = victim.Label;
         try
         {
-            string cookie = vault.Cookie(account) ?? throw new InvalidOperationException("The saved login could not be read.");
-            // Check the login works before touching the running client, so a dead cookie never costs a client.
-            var plan = await PlanLaunchAsync(account, cookie);
-            string ticket = await launcher.PrepareAsync(cookie, plan.PlaceId, CancellationToken.None);
-            var identity = victim.Identity;
-            var closed = await Task.Run(() => manager.CloseClient(identity));
-            if (!closed.Success) throw new InvalidOperationException(closed.Message);
-            int pid = await LaunchOneAsync(cookie, plan, ticket, account, replacing: true);
-            launchedPids[pid] = account; launchedAt[account] = DateTimeOffset.UtcNow;
+            // The login is checked before the running client is touched, so a dead cookie never costs a client.
+            await launch.ReplaceAsync(account, victim.Identity);
             AddActivity(label, quiet ? "Stopped doing anything for 10 minutes (probably stuck on an error box). Fix: closed the client and restarted it from its saved login."
                 : "Roblox ended this account's login. Fix: closed the client and restarted it from its saved login.", false, info: true);
             Warning = false; Message = quiet ? $"{label} was stuck. Restarted it." : $"{label}'s login was lost. Restarted it.";

@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using RobloxAfkManager.App.Services;
 using RobloxAfkManager.Core;
 
 namespace RobloxAfkManager.App.ViewModels;
@@ -14,41 +13,44 @@ public sealed class SavedLoginView(long userId, string name, bool running, strin
     public bool Selected { get => selected; set { if (Set(ref selected, value)) changed(UserId, value); } }
 }
 
-// Opens the configured game for every saved account that is not currently running.
+// The dashboard side of starting accounts. What actually happens (servers, the launch gap, fallback, Reset servers) lives in the
+// engine's LaunchService; this only turns it into properties and commands for the window.
 public sealed partial class MainViewModel
 {
-    private static readonly TimeSpan LaunchGrace = TimeSpan.FromMinutes(3);
-    private TimeSpan LaunchSpacing => TimeSpan.FromSeconds(spacingSeconds);
+    private LaunchService launch = null!;
+    private LoginVault vault = null!;
+    private IAccountLauncher launcher = null!;
+    private string settingsFolder = null!;
     private readonly HashSet<long> selectedLogins = [];
 
-    // Seconds between starting one account and the next. Roblox rate-limits launches, so some people want longer.
-    private string settingsFolder = null!;
-    private string SpacingFile => System.IO.Path.Combine(settingsFolder, "spacing.txt");
-    private int spacingSeconds = 10;
-    public int LaunchSpacingSeconds
-    {
-        get => spacingSeconds;
-        set
-        {
-            int clamped = Math.Clamp(value, 5, 120);
-            if (clamped != spacingSeconds)
-            {
-                spacingSeconds = clamped;
-                try { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(SpacingFile)!); System.IO.File.WriteAllText(SpacingFile, clamped.ToString()); }
-                catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { Warning = true; Message = "Could not save the spacing: " + ex.Message; }
-            }
-            Raise();
-        }
-    }
-    private int ReadSpacing()
-    {
-        try { return System.IO.File.Exists(SpacingFile) && int.TryParse(System.IO.File.ReadAllText(SpacingFile).Trim(), out var seconds) ? Math.Clamp(seconds, 5, 120) : 10; }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { return 10; }
-    }
+    public int LaunchSpacingSeconds { get => launch.LaunchSpacingSeconds; set { launch.LaunchSpacingSeconds = value; Raise(); } }
+    private TimeSpan LaunchSpacing => launch.LaunchSpacing;
+    public long GamePlaceId => launch.GamePlaceId;
+    public string GameLink { get => launch.GamePlaceId > 0 ? launch.GamePlaceId.ToString() : ""; set => launch.SetGame(value); }
+    public static long? ParsePlaceId(string? text) => LaunchService.ParsePlaceId(text);
+    public bool HasLaunchTarget => launch.HasLaunchTarget;
+    public string PrivateServer1Link { get => launch.PrivateServer1Link; set => launch.SetServerLink(1, value); }
+    public string PrivateServer2Link { get => launch.PrivateServer2Link; set => launch.SetServerLink(2, value); }
+    public int AccountsOnServer1 { get => launch.AccountsOnServer1; set => launch.AccountsOnServer1 = value; }
+    public string ServerSummary => launch.ServerSummary;
+    public TimeSpan ResetDelay { get => launch.ResetDelay; set => launch.ResetDelay = value; }
+    public TimeSpan PrivateJoinPatience { get => launch.PrivateJoinPatience; set => launch.PrivateJoinPatience = value; }
+    // The window asks "close N accounts and reset the servers?" before anything is closed. Not set in tests, which proceed.
+    public Func<int, bool>? ConfirmReset { get => launch.ConfirmReset; set => launch.ConfirmReset = value; }
 
-    public int SelectedCount => vault.Logins.Count(l => selectedLogins.Contains(l.UserId) && !IsActive(l.UserId, DateTimeOffset.UtcNow));
-    public string OpenSelectedLabel => SelectedCount == 0 ? "Open selected" : $"Open {SelectedCount} selected";
+    public ObservableCollection<SavedLoginView> SavedLogins { get; } = [];
+    public AsyncCommand OpenClosedCommand { get; private set; } = null!;
     public AsyncCommand OpenSelectedCommand { get; private set; } = null!;
+    public AsyncCommand RemoveLoginCommand { get; private set; } = null!;
+    public AsyncCommand OpenLoginCommand { get; private set; } = null!;
+    public AsyncCommand ResetServersCommand { get; private set; } = null!;
+    public AsyncCommand ResplitServersCommand { get; private set; } = null!;
+    public int ClosedLoginCount => SavedLogins.Count(l => !l.Running);
+    public bool HasClosedLogins => ClosedLoginCount > 0 && !launch.Launching && HasLaunchTarget;
+    public string OpenClosedLabel => launch.Launching ? "Opening…" : !HasLaunchTarget ? "Set a game first" : ClosedLoginCount == 0 ? "Nothing to open" : $"Open {ClosedLoginCount} closed";
+    public int SelectedCount => vault.Logins.Count(l => selectedLogins.Contains(l.UserId) && !launch.IsActive(l.UserId, DateTimeOffset.UtcNow));
+    public string OpenSelectedLabel => SelectedCount == 0 ? "Open selected" : $"Open {SelectedCount} selected";
+
     private void OnSelected(long userId, bool on)
     {
         if (on) selectedLogins.Add(userId); else selectedLogins.Remove(userId);
@@ -83,64 +85,26 @@ public sealed partial class MainViewModel
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
         { Warning = true; Message = "That isn't a backup this manager can read: " + ex.Message; }
     }
-    private LoginVault vault = null!;
-    private IAccountLauncher launcher = null!;
-
-    // The game every saved account opens. Paste a roblox.com/games/... link or a place id; it is remembered between runs.
-    private string GameFile => System.IO.Path.Combine(settingsFolder, "game.txt");
-    private long gamePlaceId;
-    public long GamePlaceId => gamePlaceId;
-    public string GameLink
-    {
-        get => gamePlaceId > 0 ? gamePlaceId.ToString() : "";
-        set
-        {
-            if (string.IsNullOrWhiteSpace(value)) { gamePlaceId = 0; SaveGame(); }
-            else if (ParsePlaceId(value) is { } id) { gamePlaceId = id; SaveGame(); Warning = false; Message = $"Accounts will open game {id}."; }
-            else { Warning = true; Message = "That isn't a Roblox game link or place id."; }
-            Raise(nameof(GameLink)); Raise(nameof(GamePlaceId)); RaiseServers(); Raise(nameof(HasClosedLogins)); Raise(nameof(OpenClosedLabel)); OpenClosedCommand?.Notify(); OpenLoginCommand?.Notify();
-        }
-    }
-    public static long? ParsePlaceId(string? text)
-    {
-        var match = System.Text.RegularExpressions.Regex.Match(text ?? "", @"^\s*(?:https?://(?:www\.)?roblox\.com/(?:[a-z-]+/)?games/)?(\d{3,19})(?:[/?#].*)?\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200));
-        return match.Success && long.TryParse(match.Groups[1].Value, out var id) && id > 0 ? id : null;
-    }
-    private long ReadGame()
-    {
-        try { return System.IO.File.Exists(GameFile) && new System.IO.FileInfo(GameFile).Length < 1024 ? ParsePlaceId(System.IO.File.ReadAllText(GameFile)) ?? 0 : 0; }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { return 0; }
-    }
-    private void SaveGame()
-    {
-        try { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(GameFile)!); System.IO.File.WriteAllText(GameFile, gamePlaceId > 0 ? gamePlaceId.ToString() : ""); }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { Warning = true; Message = "Could not save the game: " + ex.Message; }
-    }
-    private readonly Dictionary<long, DateTimeOffset> launchedAt = [];
-    private bool launching;
-    public ObservableCollection<SavedLoginView> SavedLogins { get; } = [];
-    public AsyncCommand OpenClosedCommand { get; private set; } = null!;
-    public AsyncCommand RemoveLoginCommand { get; private set; } = null!;
-    public AsyncCommand OpenLoginCommand { get; private set; } = null!;
-    public int ClosedLoginCount => SavedLogins.Count(l => !l.Running);
-    public bool HasClosedLogins => ClosedLoginCount > 0 && !launching && HasLaunchTarget;
-    public string OpenClosedLabel => launching ? "Opening…" : !HasLaunchTarget ? "Set a game first" : ClosedLoginCount == 0 ? "Nothing to open" : $"Open {ClosedLoginCount} closed";
 
     private void InitializeLaunch(IAccountLauncher? accountLauncher, LoginVault? loginVault, string? folder)
     {
         launcher = accountLauncher ?? new AccountLauncher(new WindowsRobloxClients());
         vault = loginVault ?? new LoginVault();
         settingsFolder = folder ?? AppFolders.Data;
-        spacingSeconds = ReadSpacing(); gamePlaceId = ReadGame(); InitializeServers();
-        OpenClosedCommand = new(OpenClosedAsync, () => HasClosedLogins, HandleError);
-        OpenSelectedCommand = new(OpenSelectedAsync, () => !launching && HasLaunchTarget && SelectedCount > 0, HandleError);
+        launch = new LaunchService(this, vault, launcher, settingsFolder, log);
+        OpenClosedCommand = new(launch.OpenClosedAsync, () => HasClosedLogins, HandleError);
+        OpenSelectedCommand = new(() => launch.LaunchAsync(vault.Logins.Where(l => selectedLogins.Contains(l.UserId) && !launch.IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray()),
+            () => !launch.Launching && HasLaunchTarget && SelectedCount > 0, HandleError);
         RestartClientCommand = new(RestartClientAsync, CanRestart, HandleError);
-        OpenLoginCommand = new(OpenOneAsync, p => !launching && HasLaunchTarget && p is SavedLoginView { Running: false }, HandleError);
+        OpenLoginCommand = new(parameter => parameter is SavedLoginView view && vault.Logins.FirstOrDefault(l => l.UserId == view.UserId) is { } login ? launch.LaunchAsync([login]) : Task.CompletedTask,
+            p => !launch.Launching && HasLaunchTarget && p is SavedLoginView { Running: false }, HandleError);
         RemoveLoginCommand = new(parameter =>
         {
             if (parameter is SavedLoginView view) { vault.Remove(view.UserId); selectedLogins.Remove(view.UserId); ForgetBrowserProfile(view.UserId); RefreshLogins(); Message = $"{view.Name}'s saved login was removed."; Warning = false; }
             return Task.CompletedTask;
-        }, _ => !launching, HandleError);
+        }, _ => !launch.Launching, HandleError);
+        ResetServersCommand = new(launch.ResetServersAsync, () => launch.CanResetServers(disposed), HandleError);
+        ResplitServersCommand = new(() => { launch.Resplit(); return Task.CompletedTask; }, () => !launch.Launching, HandleError);
         RefreshLogins();
     }
 
@@ -150,16 +114,24 @@ public sealed partial class MainViewModel
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { /* Left behind; harmless. */ }
     }
 
+    private void RaiseServers()
+    {
+        Raise(nameof(PrivateServer1Link)); Raise(nameof(PrivateServer2Link)); Raise(nameof(AccountsOnServer1)); Raise(nameof(ServerSummary)); Raise(nameof(HasLaunchTarget));
+        Raise(nameof(GameLink)); Raise(nameof(GamePlaceId));
+        Raise(nameof(HasClosedLogins)); Raise(nameof(OpenClosedLabel)); OpenClosedCommand?.Notify(); OpenSelectedCommand?.Notify(); OpenLoginCommand?.Notify(); ResetServersCommand?.Notify(); ResplitServersCommand?.Notify();
+    }
+
     private void RefreshLogins()
     {
         var now = DateTimeOffset.UtcNow;
-        var servers = serverCode1 is not null && serverCode2 is not null ? Assignments(commit: false) : null;
+        var preview = launch.HasServer1 && launch.HasServer2 ? launch.Assignments(commit: false) : null;
         SavedLogins.Clear();
         foreach (var login in vault.Logins.OrderBy(l => l.Username, StringComparer.OrdinalIgnoreCase))
         {
             bool running = runningAccounts.Contains(login.UserId);
-            bool starting = !running && launchedAt.TryGetValue(login.UserId, out var at) && now - at < LaunchGrace;
-            SavedLogins.Add(new(login.UserId, login.Username, running || starting, (running ? "Running" : starting ? "Starting…" : "Closed") + (servers is not null ? $" · server {servers.GetValueOrDefault(login.UserId, 2)}" : serverCode1 is not null || serverCode2 is not null ? $" · server {(serverCode1 is not null ? 1 : 2)}" : ""), selectedLogins.Contains(login.UserId), OnSelected));
+            bool starting = !running && launch.IsStarting(login.UserId, now);
+            string server = launch.ServerShownFor(login.UserId, preview) is { } number ? $" · server {number}" : "";
+            SavedLogins.Add(new(login.UserId, login.Username, running || starting, (running ? "Running" : starting ? "Starting…" : "Closed") + server, selectedLogins.Contains(login.UserId), OnSelected));
         }
         Raise(nameof(ClosedLoginCount)); Raise(nameof(HasClosedLogins)); Raise(nameof(OpenClosedLabel)); Raise(nameof(SelectedCount)); Raise(nameof(OpenSelectedLabel)); OpenClosedCommand?.Notify(); OpenSelectedCommand?.Notify(); OpenLoginCommand?.Notify(); ResetServersCommand?.Notify();
     }
@@ -180,20 +152,12 @@ public sealed partial class MainViewModel
         catch (Exception ex) { HandleError(ex); return false; }
     }
 
-    // Running, just started, or started a while ago and still loading (a private server join can queue for minutes). A second
-    // client for the same account would knock the first one off ("joined from another device"), so none is started.
-    private static readonly TimeSpan LoadingLife = TimeSpan.FromMinutes(15);
-    private bool IsActive(long userId, DateTimeOffset now) => runningAccounts.Contains(userId)
-        || (launchedAt.TryGetValue(userId, out var at) && (now - at < LaunchGrace || (now - at < LoadingLife && HasLoadingClient(userId))));
-    private bool HasLoadingClient(long userId) =>
-        launchedPids.Any(p => p.Value == userId && Clients.Any(c => c.ProcessId == p.Key && c.AccountId is null));
-
     // A window whose account is not known yet (the manager only just started, or Roblox just opened it) would look like a closed account.
     // Before deciding what is closed, windows that are still unidentified get their account read once more.
     private async Task SettleAccountsAsync()
     {
         if (accountNames is null) return;
-        bool Unknown() => Clients.Any(c => !c.IsIgnored && c.AccountId is null && !launchedPids.ContainsKey(c.ProcessId));
+        bool Unknown() => Clients.Any(c => !c.IsIgnored && c.AccountId is null && !launch.WasLaunchedByManager(c.ProcessId));
         for (int round = 0; round < 3 && Unknown(); round++)
         {
             for (int wait = 0; wait < 100 && (Busy || resolvingNames); wait++) await Task.Delay(100);
@@ -203,50 +167,19 @@ public sealed partial class MainViewModel
         }
     }
 
-    private async Task OpenClosedAsync()
-    {
-        if (launching) return;
-        await SettleAccountsAsync();
-        await LaunchAsync(vault.Logins.Where(l => !IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray());
-    }
+    private string NameOf(long userId) => accountLabels.GetValueOrDefault(userId) ?? vault.Logins.FirstOrDefault(l => l.UserId == userId)?.Username ?? $"Account {userId}";
 
-    private Task OpenSelectedAsync() => LaunchAsync(vault.Logins.Where(l => selectedLogins.Contains(l.UserId) && !IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray());
-
-    private Task OpenOneAsync(object? parameter) =>
-        parameter is SavedLoginView view && vault.Logins.FirstOrDefault(l => l.UserId == view.UserId) is { } login ? LaunchAsync([login]) : Task.CompletedTask;
-
-    // Opens the accounts one at a time and reports what happened. The caller owns the "launching" flag.
-    private async Task<(int Opened, List<string> Failures)> LaunchCoreAsync(SavedLogin[] targets, ISet<long>? replacing = null)
-    {
-        int opened = 0; var failures = new List<string>();
-        foreach (var login in targets)
-        {
-            // Became active since the list was made (opened by something else): skipped at once, without waiting for the launch gap.
-            if (replacing?.Contains(login.UserId) != true && IsActive(login.UserId, DateTimeOffset.UtcNow)) continue;
-            Warning = false; Message = $"Opening {login.Username} ({opened + 1} of {targets.Length})…";
-            try
-            {
-                string cookie = vault.Cookie(login.UserId) ?? throw new InvalidOperationException("The saved login could not be read.");
-                var plan = await PlanLaunchAsync(login.UserId, cookie);
-                int pid = await LaunchOneAsync(cookie, plan, null, login.UserId, replacing?.Contains(login.UserId) == true);
-                launchedPids[pid] = login.UserId;
-                launchedAt[login.UserId] = DateTimeOffset.UtcNow; opened++; RefreshLogins();
-            }
-            catch (Exception ex) { failures.Add($"{login.Username}: {ex.Message}"); log.Write($"Launching account {login.UserId} failed.", ex); }
-        }
-        return (opened, failures);
-    }
-
-    private async Task LaunchAsync(SavedLogin[] targets)
-    {
-        if (launching) return;
-        if (!HasLaunchTarget) { Warning = true; Message = "Paste a game link or a private server link first (Settings → Accounts)."; return; }
-        if (targets.Length == 0) { Warning = false; Message = "Every saved account is already running or starting."; return; }
-        launching = true; Raise(nameof(HasClosedLogins)); Raise(nameof(OpenClosedLabel)); OpenClosedCommand.Notify(); OpenSelectedCommand.Notify();
-        int opened; List<string> failures;
-        try { (opened, failures) = await LaunchCoreAsync(targets); }
-        finally { launching = false; RefreshLogins(); }
-        Warning = failures.Count > 0;
-        Message = failures.Count == 0 ? $"Started {opened} account(s). Use Arrange once their windows appear." : $"Started {opened}; {failures.Count} failed. {failures[0]}";
-    }
+    // ---- what the engine borrows from the dashboard (IEngineHost) ----
+    IReadOnlyList<IClientView> IEngineHost.Clients => Clients;
+    IReadOnlySet<long> IEngineHost.RunningAccounts => runningAccounts;
+    int? IEngineHost.ProfileOrder(long userId) => profiles.TryGetValue(userId, out var p) ? p.Order : null;
+    string IEngineHost.NameOf(long userId) => NameOf(userId);
+    bool IEngineHost.Busy => Busy;
+    bool IEngineHost.Disposed => disposed;
+    bool IEngineHost.OtherFixRunning => recovering || reopening;
+    void IEngineHost.SetStatus(string message, bool warning) { Warning = warning; Message = message; }
+    void IEngineHost.AddActivity(string label, string message, bool warning, bool announce, bool info, bool quiet) => AddActivity(label, message, warning, announce, info, quiet);
+    void IEngineHost.LaunchStateChanged() { RaiseServers(); RefreshLogins(); }
+    OperationResult IEngineHost.CloseClient(WindowIdentity identity) => manager.CloseClient(identity);
+    Task IEngineHost.SettleAccountsAsync() => SettleAccountsAsync();
 }

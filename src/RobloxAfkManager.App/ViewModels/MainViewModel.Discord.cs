@@ -1,4 +1,3 @@
-using RobloxAfkManager.App.Services;
 using RobloxAfkManager.Core;
 
 namespace RobloxAfkManager.App.ViewModels;
@@ -271,7 +270,7 @@ public sealed partial class MainViewModel
             profiles.TryGetValue(id, out var profile);
             string name = profile?.CustomName ?? profile?.Username ?? saved;
             if (pendingReopen.ContainsKey(id)) rows.Add(new(name, BoardState.Warn, "Closed · reopening soon"));
-            else if (launchedAt.TryGetValue(id, out var launched) && now - launched < LaunchGrace) rows.Add(new(name, BoardState.Warn, "Starting…"));
+            else if (launch.IsStarting(id, now)) rows.Add(new(name, BoardState.Warn, "Starting…"));
             else if (profile?.LastSeen is { } last) rows.Add(new(name, BoardState.Down, $"Closed · last seen <t:{last.ToUnixTimeSeconds()}:R>"));
             else rows.Add(new(name, BoardState.Idle, "Not running"));
         }

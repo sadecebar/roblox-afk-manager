@@ -66,7 +66,7 @@ public sealed partial class MainViewModel
             string details = (account.Game is { } game ? game + " · " : "") + "last seen " + AccountRoster.Ago(account.LastSeen, now);
             OfflineAccounts.Add(new(account.UserId, account.Name, details, avatarCache.GetValueOrDefault(account.UserId)));
         }
-        if (OpenClosedCommand is not null && !launching) RefreshLogins();
+        if (OpenClosedCommand is not null && !launch.Launching) RefreshLogins();
         Raise(nameof(RosterSettled)); Raise(nameof(OfflineCount)); Raise(nameof(HasOffline));
         Raise(nameof(UnidentifiedCount)); Raise(nameof(HasUnidentified)); Raise(nameof(UnidentifiedHint));
         Raise(nameof(HealthSummary)); Raise(nameof(HealthTone));
