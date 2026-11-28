@@ -293,6 +293,8 @@ docs/                          Guides and implementation notes
 | [SESSIONS.md](docs/SESSIONS.md) | Alerts, session states and saved profiles |
 | [TESTING.md](docs/TESTING.md) | Automated and manual test procedures |
 | [UI-DESIGN.md](docs/UI-DESIGN.md) | Layout and visual design conventions |
+| [ENGINE.md](docs/ENGINE.md) | The engine contract: what a window may read and call |
+| [ARCHITECTURE-PLAN.md](docs/ARCHITECTURE-PLAN.md) | Splitting the engine from the UI, milestones and progress |
 | [WIN32.md](docs/WIN32.md) | Windows, DWM and public API implementation notes |
 | [REPOSITORY.md](docs/REPOSITORY.md) | Keeping personal data out of commits |
 

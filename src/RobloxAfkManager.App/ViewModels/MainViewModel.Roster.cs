@@ -39,12 +39,11 @@ public sealed partial class MainViewModel
 
     public void ReportCopied(string name) { Warning = false; Message = $"Copied \"{name}\". Log in to that account to bring it back."; }
 
-    private void TrackRoster(bool forceSave = false)
+    private void TrackRoster()
     {
-        var now = DateTimeOffset.UtcNow;
+        // The engine tracks which accounts run; the window keeps their last avatar to show them while offline.
         foreach (var tile in Clients.Where(c => c.AccountId is not null).GroupBy(c => c.AccountId!.Value).Select(g => g.First())) if (tile.Avatar is { } avatar) avatarCache[tile.AccountId!.Value] = avatar;
-        if (work.TrackRunning(Clients, now, forceSave)) SaveWorkspace();
-        RebuildOffline(now);
+        RebuildOffline(DateTimeOffset.UtcNow);
     }
 
     private void RebuildOffline(DateTimeOffset now)

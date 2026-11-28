@@ -19,8 +19,6 @@ public sealed partial class MainViewModel
 {
     private LaunchService launch = null!;
     private LoginVault vault = null!;
-    private IAccountLauncher launcher = null!;
-    private string settingsFolder = null!;
     private readonly HashSet<long> selectedLogins = [];
 
     public int LaunchSpacingSeconds { get => launch.LaunchSpacingSeconds; set { launch.LaunchSpacingSeconds = value; Raise(); } }
@@ -35,8 +33,6 @@ public sealed partial class MainViewModel
     public string ServerSummary => launch.ServerSummary;
     public TimeSpan ResetDelay { get => launch.ResetDelay; set => launch.ResetDelay = value; }
     public TimeSpan PrivateJoinPatience { get => launch.PrivateJoinPatience; set => launch.PrivateJoinPatience = value; }
-    // The window asks "close N accounts and reset the servers?" before anything is closed. Not set in tests, which proceed.
-    public Func<int, bool>? ConfirmReset { get => launch.ConfirmReset; set => launch.ConfirmReset = value; }
 
     public ObservableCollection<SavedLoginView> SavedLogins { get; } = [];
     public AsyncCommand OpenClosedCommand { get; private set; } = null!;
@@ -81,13 +77,9 @@ public sealed partial class MainViewModel
         { Warning = true; Message = "That isn't a backup this manager can read: " + ex.Message; }
     }
 
-    private void InitializeLaunch(IAccountLauncher? accountLauncher, LoginVault? loginVault, string? folder)
+    private void InitializeLaunch()
     {
-        launcher = accountLauncher ?? new AccountLauncher(new WindowsRobloxClients());
-        vault = loginVault ?? new LoginVault();
-        settingsFolder = folder ?? AppFolders.Data;
-        launch = new LaunchService(this, vault, launcher, settingsFolder, log);
-        keeper = new HealthService(this, launch, settingsFolder, log);
+        launch = engine.Launch; vault = launch.Vault; keeper = engine.Health;
         OpenClosedCommand = new(launch.OpenClosedAsync, () => HasClosedLogins, HandleError);
         OpenSelectedCommand = new(() => launch.LaunchAsync(vault.Logins.Where(l => selectedLogins.Contains(l.UserId) && !launch.IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray()),
             () => !launch.Launching && HasLaunchTarget && SelectedCount > 0, HandleError);
@@ -99,7 +91,7 @@ public sealed partial class MainViewModel
             if (parameter is SavedLoginView view) { vault.Remove(view.UserId); selectedLogins.Remove(view.UserId); ForgetBrowserProfile(view.UserId); RefreshLogins(); Message = $"{view.Name}'s saved login was removed."; Warning = false; }
             return Task.CompletedTask;
         }, _ => !launch.Launching, HandleError);
-        ResetServersCommand = new(launch.ResetServersAsync, () => launch.CanResetServers(disposed), HandleError);
+        ResetServersCommand = new(launch.ResetServersAsync, () => launch.CanResetServers(engine.Disposed), HandleError);
         ResplitServersCommand = new(() => { launch.Resplit(); return Task.CompletedTask; }, () => !launch.Launching, HandleError);
         RefreshLogins();
     }
@@ -139,7 +131,7 @@ public sealed partial class MainViewModel
         { Warning = true; Message = "That doesn't look like a .ROBLOSECURITY cookie. Paste only its value."; return false; }
         try
         {
-            var login = await launcher.IdentifyAsync(cookie, CancellationToken.None);
+            var login = await launch.Launcher.IdentifyAsync(cookie, CancellationToken.None);
             vault.Save(login.UserId, login.Username, cookie);
             RefreshLogins();
             Warning = false; Message = $"{login.Username} saved. Their login is encrypted for this Windows user.";
@@ -147,36 +139,4 @@ public sealed partial class MainViewModel
         }
         catch (Exception ex) { HandleError(ex); return false; }
     }
-
-    // A window whose account is not known yet (the manager only just started, or Roblox just opened it) would look like a closed account.
-    // Before deciding what is closed, windows that are still unidentified get their account read once more.
-    private async Task SettleAccountsAsync()
-    {
-        if (accountNames is null) return;
-        bool Unknown() => Clients.Any(c => !c.IsIgnored && c.AccountId is null && !launch.WasLaunchedByManager(c.ProcessId));
-        for (int round = 0; round < 3 && Unknown(); round++)
-        {
-            for (int wait = 0; wait < 100 && (Busy || resolvingNames); wait++) await Task.Delay(100);
-            await RefreshAsync();
-            nextNameRefresh = DateTimeOffset.MinValue;
-            await RefreshAccountNamesAsync();
-        }
-    }
-
-    private string NameOf(long userId) => keeper.AccountLabels.GetValueOrDefault(userId) ?? vault.Logins.FirstOrDefault(l => l.UserId == userId)?.Username ?? $"Account {userId}";
-
-    // ---- what the engine borrows from the dashboard (IEngineHost) ----
-    IReadOnlyList<IClientView> IEngineHost.Clients => Clients;
-    IReadOnlySet<long> IEngineHost.RunningAccounts => runningAccounts;
-    int? IEngineHost.ProfileOrder(long userId) => profiles.TryGetValue(userId, out var p) ? p.Order : null;
-    string IEngineHost.NameOf(long userId) => NameOf(userId);
-    IReadOnlyCollection<AccountProfile> IEngineHost.Profiles => profiles.Values;
-    bool IEngineHost.Busy => Busy;
-    bool IEngineHost.Disposed => disposed;
-    bool IEngineHost.OtherFixRunning => keeper.Working;
-    void IEngineHost.SetStatus(string message, bool warning) { Warning = warning; Message = message; }
-    void IEngineHost.AddActivity(string label, string message, bool warning, bool announce, bool info, bool quiet) => AddActivity(label, message, warning, announce, info, quiet);
-    void IEngineHost.LaunchStateChanged() { RaiseServers(); RefreshLogins(); }
-    OperationResult IEngineHost.CloseClient(WindowIdentity identity) => manager.CloseClient(identity);
-    Task IEngineHost.SettleAccountsAsync() => SettleAccountsAsync();
 }

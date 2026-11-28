@@ -109,6 +109,32 @@ internal static class Program
                 Check(bad.Length == 0, $"{assembly.GetName().Name} references {string.Join(", ", bad)}");
             }
         });
+        Test("The engine runs with no window: it detects clients, reads their accounts and reports their status as plain data", () =>
+        {
+            string root = Path.Combine(Path.GetTempPath(), "rafk-engine-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+            try
+            {
+                var fake = new FakeWindowSystem(2);
+                var statuses = new List<string?>();
+                using var engine = new AfkEngine(new EngineOptions
+                {
+                    Windows = fake, Log = new TestLog(), Resources = new FakeProcessResources(fake), WorkingSet = new FakeWorkingSets(fake),
+                    AccountLookup = new FixedAccountLookup(77), ClientNames = new MemoryClientNameStore(), Workspace = new MemoryWorkspaceStore(),
+                    Launcher = new RecordingLauncher(), Vault = new LoginVault(Path.Combine(root, "logins.dat")), SettingsFolder = root,
+                    Webhook = new DiscordWebhook(root, new FakeDiscord()), Idle = new NeverIdle(),
+                });
+                engine.StatusChanged += (message, _) => statuses.Add(message);
+                engine.RefreshAsync(manual: true).GetAwaiter().GetResult();
+                for (int i = 0; i < 50 && engine.Clients.Any(c => c.AccountId is null); i++) { Thread.Sleep(50); engine.RefreshAccountNamesAsync().GetAwaiter().GetResult(); }
+                Check(engine.Clients.Count == 2, "clients were not detected");
+                Check(engine.Clients.All(c => c.AccountId == 77 && c.Label == "FixtureRanger"), "accounts were not read");
+                var status = engine.Clients[0].StatusAt(DateTimeOffset.UtcNow);
+                Check(status is { Session: SessionState.Joined, Tone: ClientTone.Good, NeedsAttention: false }, "status was not reported as joined: " + status);
+                Check(statuses.Any(s => s?.StartsWith("Detected 2 Roblox game windows", StringComparison.Ordinal) == true), "the refresh was not reported");
+                Check(ClientStatus.Of("Not responding", null, DateTimeOffset.UtcNow) is { Tone: ClientTone.Alert, NeedsAttention: true }, "a frozen window is not an alert");
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+        });
         Test("Launch sequence on fake Roblox processes: idle background clients are cleared, the client is started on the private server, the new pid is returned", () =>
         {
             var clients = new FakeRobloxClients();

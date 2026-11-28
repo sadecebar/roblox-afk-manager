@@ -11,7 +11,7 @@ public sealed partial class MainViewModel
 
     private void InitializePlacements()
     {
-        placements = new PlacementService(this, work, manager, launch);
+        placements = engine.Placements;
         SaveLayoutCommand = new(async () => { await placements.SaveLayoutAsync(); RaisePlacements(); }, () => !Busy, HandleError);
         ClearLayoutCommand = new(() =>
         {

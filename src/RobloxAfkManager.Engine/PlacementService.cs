@@ -4,8 +4,15 @@ namespace RobloxAfkManager.Engine;
 
 // Remembers where each account's window belongs and puts new windows there, so launched accounts don't all pile up in the
 // bottom-right corner.
-public sealed class PlacementService(IEngineHost host, WorkspaceService work, WindowManager manager, LaunchService launch)
+public sealed class PlacementService
 {
+    private readonly IEngineHost host;
+    private readonly WorkspaceService work;
+    private readonly WindowManager manager;
+    private readonly LaunchService launch;
+    internal PlacementService(IEngineHost host, WorkspaceService work, WindowManager manager, LaunchService launch)
+    { this.host = host; this.work = work; this.manager = manager; this.launch = launch; }
+
     // Roblox positions and sizes its own window while it loads; moving it earlier gets undone.
     private static readonly TimeSpan PlacementDelay = TimeSpan.FromSeconds(8);
     // Roblox moves and resizes its own window while it loads, and a busy client can refuse a move. So a new window

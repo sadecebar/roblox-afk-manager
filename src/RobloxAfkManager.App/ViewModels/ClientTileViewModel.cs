@@ -3,30 +3,48 @@ using System.Windows.Media;
 
 namespace RobloxAfkManager.App.ViewModels;
 
-public sealed class ClientTileViewModel(ClientWindow client, int slot) : ObservableObject, IClientView
+// One card on the dashboard: how the window shows an engine client. All the facts come from EngineClient; this only turns them into
+// text, an avatar image and a tone, and passes the Ignore checkbox back to the engine.
+public sealed class ClientTileViewModel : ObservableObject
 {
-    private ClientWindow client = client;
-    private readonly int slot = slot;
-    private bool isIgnored;
+    private readonly Action<ClientTileViewModel, bool> requestIgnore;
+    private ClientWindow shownWindow;
     private int previewRevision;
-    private string? customName, detectedName;
-    private AccountDetails? account;
     private byte[]? avatarBytes;
     private DateTimeOffset clock = DateTimeOffset.UtcNow;
-    public long? AccountId => account?.Session.UserId;
-    public SessionReport? Session => account?.Session;
+    private string shownLabel;
+
+    public ClientTileViewModel(EngineClient client, Action<ClientTileViewModel, bool> requestIgnore)
+    {
+        Client = client; this.requestIgnore = requestIgnore; shownWindow = client.Window; shownLabel = client.Label;
+        UpdateAvatar();
+        client.Changed += _ => Refresh();
+    }
+
+    // A card for a client no engine manages (previews, design views and tests).
+    public ClientTileViewModel(ClientWindow window, int slot) : this(EngineClient.Detached(window, slot), (_, _) => { }) { }
+
+    public EngineClient Client { get; }
+    // The card's notion of "now" for durations and the "log too old" check; moved forward on every change.
+    public void UpdateSessionClock(DateTimeOffset now) { clock = now; foreach (var name in Properties) Raise(name); }
+    public long? AccountId => Client.AccountId;
+    public SessionReport? Session => Client.Session;
     public ImageSource? Avatar { get; private set; }
     public string AvatarFallback => Label.Length > 0 ? Label[..1].ToUpperInvariant() : "?";
     public string ProfileHint => AccountId is { } id ? $"Account ID {id}. Name, order, ignore choice and preferred plan are remembered across restarts." : "Waiting for an account ID. Names and choices currently apply to this process only.";
-    public string? KnownGameName => account?.GameName;
-    public string GameName => account?.GameName ?? (Session?.PlaceId is { } place ? $"Place {place}" : "Game not identified");
-    public string SessionStatus => Status == "Not responding" ? "Not responding" : Session is null || clock - Session.CheckedAt > TimeSpan.FromMinutes(3) ? "Session unknown" : Session.Phase switch
+    public string? KnownGameName => Client.KnownGameName;
+    public string GameName => Client.KnownGameName ?? (Session?.PlaceId is { } place ? $"Place {place}" : "Game not identified");
+
+    // ---- status: the engine decides, the card words it ----
+    private ClientStatus State => Client.StatusAt(clock);
+    public string SessionStatus => State.Session switch
     {
-        SessionPhase.Joined => "Joined (log)",
-        SessionPhase.Disconnected => "Disconnected (log)",
-        SessionPhase.Joining when clock - Session.EventAt > TimeSpan.FromMinutes(2) => "Possibly stuck joining",
-        SessionPhase.Joining => "Joining (log)",
-        _ => "Session unknown"
+        SessionState.NotResponding => "Not responding",
+        SessionState.Joined => "Joined (log)",
+        SessionState.Disconnected => "Disconnected (log)",
+        SessionState.StuckJoining => "Possibly stuck joining",
+        SessionState.Joining => "Joining (log)",
+        _ => "Session unknown",
     };
     public string SessionDuration
     {
@@ -41,68 +59,77 @@ public sealed class ClientTileViewModel(ClientWindow client, int slot) : Observa
     public string SessionHint => $"{GameName}\n{SessionStatus}" + (Session?.JoinedAt is { } joined ? $"\nLast join report: {joined.ToLocalTime():g}" : "") +
         "\nLog evidence is best-effort; a join report does not prove the game is currently healthy or farming.";
     // Short card headline: window problems first, then log-reported session state.
-    public string HeadlineStatus => Status switch
+    public string HeadlineStatus => State.Window switch
     {
-        "Minimized externally" => "Minimized",
-        "Other desktop / cloaked" => "Other desktop",
-        _ => SessionStatus
+        ClientWindowState.Minimized => "Minimized",
+        ClientWindowState.OtherDesktop => "Other desktop",
+        _ => SessionStatus,
     };
-    // Good: joined per log. Pending: joining. Alert: needs a look. Idle: unknown.
-    public string StatusTone => Status == "Not responding" || SessionNeedsAttention ? "Alert" :
-        Status is "Minimized externally" or "Other desktop / cloaked" ? "Warn" :
-        SessionStatus == "Joined (log)" ? "Good" : SessionStatus == "Joining (log)" ? "Pending" : "Idle";
-    public bool IsQuiet => SessionLogParser.IsQuiet(Session, clock);
-    public bool SessionNeedsAttention => SessionStatus is "Disconnected (log)" or "Possibly stuck joining";
-    public void SetAccountDetails(AccountDetails details)
-    {
-        account = details;
-        SetDetectedName(details.Username);
-        if (!ReferenceEquals(avatarBytes, details.AvatarPng)) { avatarBytes = details.AvatarPng; Avatar = RobloxAfkManager.App.Controls.AvatarImages.Decode(avatarBytes); Raise(nameof(Avatar)); }
-        Raise(nameof(AccountId)); Raise(nameof(ProfileHint)); UpdateSessionClock(DateTimeOffset.UtcNow);
-    }
-    public void UpdateSessionClock(DateTimeOffset now)
-    {
-        clock = now; Raise(nameof(GameName)); Raise(nameof(SessionStatus)); Raise(nameof(SessionDuration)); Raise(nameof(SessionSummary)); Raise(nameof(SessionHint)); Raise(nameof(NeedsAttention)); Raise(nameof(HeadlineStatus)); Raise(nameof(StatusTone));
-    }
-    public string? CustomName => customName;
-    public string? DetectedName => detectedName;
-    public string Label => customName ?? detectedName ?? $"Client {Slot}";
-    public string NameHint => customName is not null ? "Custom account label. Use the pencil to edit it or return to automatic naming." :
-        detectedName is not null ? "Username found for this client's account. Use the pencil to set your own label." :
+    // Good: joined per log. Pending: joining. Alert: needs a look. Warn: window out of view. Idle: unknown.
+    public string StatusTone => State.Tone.ToString();
+    public bool SessionNeedsAttention => State.SessionNeedsAttention;
+    public bool NeedsAttention => State.NeedsAttention;
+    public bool CanPreview => State.CanPreview;
+
+    // ---- names ----
+    public string? CustomName => Client.CustomName;
+    public string? DetectedName => Client.DetectedName;
+    public string Label => Client.Label;
+    public string NameHint => CustomName is not null ? "Custom account label. Use the pencil to edit it or return to automatic naming." :
+        DetectedName is not null ? "Username found for this client's account. Use the pencil to set your own label." :
         "Account name not found yet. Use the pencil to enter it yourself.";
     public string ClientDetails => $"Client {Slot} · PID {ProcessId}";
-    public void SetCustomName(string? name) { if (Set(ref customName, AccountNames.Normalize(name), nameof(CustomName))) RaiseName(); }
-    public void SetDetectedName(string? name) { if (Set(ref detectedName, AccountNames.Normalize(name), nameof(DetectedName))) RaiseName(); }
-    private void RaiseName() { Raise(nameof(Label)); Raise(nameof(NameHint)); Raise(nameof(AvatarFallback)); }
-    private string resourceStatus = "Original settings";
-    public string ResourceStatus { get => resourceStatus; set { if (Set(ref resourceStatus, value)) Raise(nameof(PlanLabel)); } }
-    public string PlanLabel => resourceStatus.StartsWith("Low applied", StringComparison.Ordinal) ? "Low" :
-        resourceStatus.StartsWith("Balanced applied", StringComparison.Ordinal) ? "Balanced" :
-        resourceStatus.StartsWith("High applied", StringComparison.Ordinal) ? "High" :
-        resourceStatus.StartsWith("Original settings", StringComparison.Ordinal) ? "Default" : "Review plan";
-    public WindowIdentity Identity => client.Identity;
-    public int ProcessId => Identity.ProcessId;
-    public string Title => client.Title;
-    public string Slot => $"{slot:00}";
-    public string Memory => client.MemoryBytes is long bytes ? $"{bytes / 1048576d:N0} MB" : "Unavailable";
-    public string Cpu => client.CpuUsagePercent is double percent ? $"{percent:N1}%" : "—";
-    public double CpuMeter => client.CpuUsagePercent ?? 0;
-    public string Position => client.Bounds.ToString();
-    public string Status => client.Status;
-    public bool NeedsAttention => SessionNeedsAttention || Status is "Minimized externally" or "Not responding" or "Other desktop / cloaked";
-    public ClientWindow Snapshot => client;
-    public PixelRect WindowBounds => client.Bounds;
+
+    // ---- resources ----
+    public string ResourceStatus => Client.ResourceStatus;
+    public string PlanLabel => ResourceStatus.StartsWith("Low applied", StringComparison.Ordinal) ? "Low" :
+        ResourceStatus.StartsWith("Balanced applied", StringComparison.Ordinal) ? "Balanced" :
+        ResourceStatus.StartsWith("High applied", StringComparison.Ordinal) ? "High" :
+        ResourceStatus.StartsWith("Original settings", StringComparison.Ordinal) ? "Default" : "Review plan";
+
+    // ---- the window ----
+    public WindowIdentity Identity => Client.Identity;
+    public int ProcessId => Client.ProcessId;
+    public string Title => Client.Window.Title;
+    public string Slot => $"{Client.Slot:00}";
+    public string Memory => Client.Window.MemoryBytes is long bytes ? $"{bytes / 1048576d:N0} MB" : "Unavailable";
+    public string Cpu => Client.Window.CpuUsagePercent is double percent ? $"{percent:N1}%" : "—";
+    public double CpuMeter => Client.Window.CpuUsagePercent ?? 0;
+    public string Position => Client.Window.Bounds.ToString();
+    public string Status => Client.Status;
+    public ClientWindow Snapshot => Client.Window;
+    public PixelRect WindowBounds => Client.WindowBounds;
     public int PreviewRevision => previewRevision;
-    public bool CanPreview => Status is not ("Minimized externally" or "Other desktop / cloaked");
-    public bool IsIgnored { get => isIgnored; set { if (Set(ref isIgnored, value)) Raise(nameof(ManagementStatus)); } }
+
+    // The Ignore checkbox: a request to the engine, which may refuse (busy, or resources could not be restored).
+    public bool IsIgnored { get => Client.IsIgnored; set { if (value != Client.IsIgnored) requestIgnore(this, value); } }
     public string ManagementStatus => IsIgnored ? "Ignored · bulk actions leave it alone" : "Click preview to bring forward";
-    public void Update(ClientWindow update)
+
+    // Stages account details on this card's client (tests and design views). The engine sets them from the Roblox log.
+    public void SetAccountDetails(AccountDetails details) => Client.SetAccountDetails(details);
+
+    private void UpdateAvatar()
     {
-        bool identityChanged = client.Identity != update.Identity;
-        client = update;
-        UpdateSessionClock(DateTimeOffset.UtcNow);
-        if (identityChanged) { Raise(nameof(Identity)); Raise(nameof(ClientDetails)); }
-        previewRevision++;
-        Raise(nameof(Title)); Raise(nameof(Slot)); Raise(nameof(Memory)); Raise(nameof(Cpu)); Raise(nameof(CpuMeter)); Raise(nameof(Position)); Raise(nameof(Status)); Raise(nameof(NeedsAttention)); Raise(nameof(HeadlineStatus)); Raise(nameof(StatusTone)); Raise(nameof(WindowBounds)); Raise(nameof(CanPreview)); Raise(nameof(PreviewRevision));
+        var bytes = Client.Account?.AvatarPng;
+        if (ReferenceEquals(bytes, avatarBytes)) return;
+        avatarBytes = bytes; Avatar = RobloxAfkManager.App.Controls.AvatarImages.Decode(bytes); Raise(nameof(Avatar));
     }
+
+    private void Refresh()
+    {
+        clock = DateTimeOffset.UtcNow;
+        if (!ReferenceEquals(shownWindow, Client.Window)) { shownWindow = Client.Window; previewRevision++; }
+        UpdateAvatar();
+        foreach (var name in Properties) Raise(name);
+        // Label is raised only when it really changed: the dashboard recounts its lists when a card's name changes.
+        if (shownLabel != Client.Label) { shownLabel = Client.Label; Raise(nameof(Label)); }
+    }
+    private static readonly string[] Properties =
+    [
+        nameof(AccountId), nameof(Session), nameof(ProfileHint), nameof(GameName), nameof(KnownGameName), nameof(SessionStatus), nameof(SessionDuration),
+        nameof(SessionSummary), nameof(SessionHint), nameof(HeadlineStatus), nameof(StatusTone), nameof(NeedsAttention), nameof(SessionNeedsAttention),
+        nameof(CustomName), nameof(DetectedName), nameof(NameHint), nameof(AvatarFallback), nameof(ClientDetails),
+        nameof(ResourceStatus), nameof(PlanLabel), nameof(Identity), nameof(Title), nameof(Slot), nameof(Memory), nameof(Cpu), nameof(CpuMeter),
+        nameof(Position), nameof(Status), nameof(WindowBounds), nameof(CanPreview), nameof(PreviewRevision), nameof(IsIgnored), nameof(ManagementStatus),
+    ];
 }

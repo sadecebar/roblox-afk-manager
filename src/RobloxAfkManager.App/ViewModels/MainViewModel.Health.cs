@@ -26,8 +26,8 @@ public sealed partial class MainViewModel
 
     // The per-client Restart button: always allowed, no cooldown or hourly cap, because the person asked for it.
     public AsyncCommand RestartClientCommand { get; private set; } = null!;
-    private bool CanRestart(object? parameter) => parameter is ClientTileViewModel tile && keeper.CanRestart(tile);
-    private Task RestartClientAsync(object? parameter) => parameter is ClientTileViewModel tile ? keeper.RestartAsync(tile) : Task.CompletedTask;
+    private bool CanRestart(object? parameter) => parameter is ClientTileViewModel tile && keeper.CanRestart(tile.Client);
+    private Task RestartClientAsync(object? parameter) => parameter is ClientTileViewModel tile ? keeper.RestartAsync(tile.Client) : Task.CompletedTask;
 
     public void ToggleReopen()
     {

@@ -19,9 +19,9 @@ public interface IClientView
     string? KnownGameName { get; }
 }
 
-// What the engine services still borrow from the dashboard while behaviour moves out of it (docs/ARCHITECTURE-PLAN.md, M3).
-// It shrinks with every step and is replaced by the engine's own state and events in M4.
-public interface IEngineHost
+// What the engine's services use from AfkEngine (the client list, status messages, closing a window). Internal: a window
+// never implements it; it talks to AfkEngine instead.
+internal interface IEngineHost
 {
     // Every detected client, in dashboard order.
     IReadOnlyList<IClientView> Clients { get; }

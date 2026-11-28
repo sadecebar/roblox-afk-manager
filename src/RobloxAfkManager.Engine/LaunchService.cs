@@ -24,7 +24,7 @@ public sealed class LaunchService
     private readonly IAppLog log;
     private readonly string folder;
 
-    public LaunchService(IEngineHost host, LoginVault vault, IAccountLauncher launcher, string settingsFolder, IAppLog log)
+    internal LaunchService(IEngineHost host, LoginVault vault, IAccountLauncher launcher, string settingsFolder, IAppLog log)
     {
         this.host = host; this.vault = vault; this.launcher = launcher; this.log = log; folder = settingsFolder;
         spacingSeconds = ReadSpacing(); gamePlaceId = ReadGame(); LoadServers();
@@ -372,8 +372,8 @@ public sealed class LaunchService
     // Closes every running account that can be reopened, waits so the private servers empty and reset, then opens every saved
     // account that is not running.
     public TimeSpan ResetDelay { get; set; } = TimeSpan.FromMinutes(1);
-    // Asks "close N accounts and reset the servers?" before anything is closed. Not set in tests, which proceed.
-    public Func<int, bool>? ConfirmReset { get; set; }
+    // Asks "close N accounts and reset the servers?" before anything is closed. Without prompts (tests) it proceeds.
+    public IUserPrompts? Prompts { get; set; }
     private readonly HashSet<long> reconnectingIds = [];
     private readonly HashSet<string> reconnectingLabels = [];
     // Accounts that Reset servers closed on purpose: no alerts and no automatic reopen for them meanwhile.
@@ -392,7 +392,7 @@ public sealed class LaunchService
         var candidates = host.Clients.Where(c => !c.IsIgnored && c.AccountId is { } id && saved.Contains(id))
             .Select(c => (Id: c.AccountId!.Value, c.Label, c.Identity)).ToArray();
         if (candidates.Length == 0) { host.SetStatus("Reset servers did nothing: no running account with a saved login was found.", true); return; }
-        if (ConfirmReset is { } ask && !ask(candidates.Length)) return;
+        if (Prompts is { } ask && !ask.ConfirmResetServers(candidates.Length)) return;
         launching = true; host.LaunchStateChanged();
         var targets = new List<(long Id, string Label, WindowIdentity Identity)>(); var skipped = new List<string>();
         try

@@ -23,7 +23,7 @@ public sealed class AlertService
     private readonly HealthService keeper;
     private readonly string folder;
 
-    public AlertService(IEngineHost host, DiscordWebhook webhook, IUserIdle idle, LaunchService launch, HealthService keeper, string settingsFolder)
+    internal AlertService(IEngineHost host, DiscordWebhook webhook, IUserIdle idle, LaunchService launch, HealthService keeper, string settingsFolder)
     {
         this.host = host; this.webhook = webhook; this.idle = idle; this.launch = launch; this.keeper = keeper; folder = settingsFolder;
         LoadAway();

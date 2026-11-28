@@ -26,7 +26,7 @@ public sealed class HealthService
     private readonly IAppLog log;
     private readonly string folder;
 
-    public HealthService(IEngineHost host, LaunchService launch, string settingsFolder, IAppLog log)
+    internal HealthService(IEngineHost host, LaunchService launch, string settingsFolder, IAppLog log)
     {
         this.host = host; this.launch = launch; vault = launch.Vault; this.log = log; folder = settingsFolder;
         try { autoReopen = File.Exists(ReopenFile) && File.ReadAllText(ReopenFile).Trim() == "1"; }

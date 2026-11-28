@@ -61,16 +61,11 @@ public sealed partial class MainViewModel
     private void RaiseAway() { RaiseIndicators(); Raise(nameof(AwayModeIndex)); Raise(nameof(AwayMinutes)); Raise(nameof(IsAway)); Raise(nameof(AwayLabel)); Raise(nameof(SleepMode)); Raise(nameof(AwayHint)); }
     private void RaiseDiscord() { Raise(nameof(DiscordConfigured)); RaiseIndicators(); Raise(nameof(BoardEnabled)); Raise(nameof(BoardHasOwnChannel)); Raise(nameof(BoardSummary)); Raise(nameof(ShowAwayChip)); Raise(nameof(DiscordUserId)); Raise(nameof(DiscordSummary)); TestDiscordCommand?.Notify(); }
 
-    private void InitializeDiscord(DiscordWebhook? hook, IUserIdle? userIdle)
+    private void InitializeDiscord()
     {
-        var idle = userIdle ?? (windows is Win32WindowSystem ? new Win32UserIdle() : new NeverIdle());
-        // Test hosts never touch the real webhook file, so a test can't post to someone's channel.
-        webhook = hook ?? (windows is Win32WindowSystem ? new DiscordWebhook(log: log) : new DiscordWebhook(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rafk-no-webhook"), log: log));
-        alerts = new AlertService(this, webhook, idle, launch, keeper, settingsFolder);
+        alerts = engine.Alerts; webhook = alerts.Webhook;
         alerts.ActivityAdded += OnActivityAdded;
         alerts.AwayChanged += RaiseAway;
         TestDiscordCommand = new(async () => { await alerts.TestAsync(); RaiseDiscord(); }, () => webhook.Configured, HandleError);
-        alerts.WatchForCrashes();
-        alerts.AnnounceStarted();
     }
 }
