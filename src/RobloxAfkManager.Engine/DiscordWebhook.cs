@@ -6,7 +6,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using RobloxAfkManager.Core;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Engine;
 
 // Sends account alerts to a Discord channel through a webhook the user creates. Off until a webhook is saved.
 // The webhook address is a secret (anyone with it can post to the channel), so it is stored encrypted for the
@@ -36,8 +36,10 @@ public sealed partial class DiscordWebhook : IDisposable
     // Plain-language result of the last send, for the settings panel. Never contains the address.
     public string LastResult { get; private set; } = "";
 
-    public DiscordWebhook(string? folder = null, HttpMessageHandler? handler = null, TimeSpan? batchDelay = null, IAppLog? log = null, TimeSpan? boardInterval = null)
+    private readonly ISecretProtector secrets;
+    public DiscordWebhook(string? folder = null, HttpMessageHandler? handler = null, TimeSpan? batchDelay = null, IAppLog? log = null, TimeSpan? boardInterval = null, ISecretProtector? protector = null)
     {
+        secrets = protector ?? DpapiSecretProtector.Instance;
         this.folder = folder ?? AppFolders.Data;
         path = Path.Combine(this.folder, "webhook.dat");
         this.boardInterval = boardInterval ?? TimeSpan.FromSeconds(10);
@@ -59,11 +61,11 @@ public sealed partial class DiscordWebhook : IDisposable
             if (!File.Exists(path) || new FileInfo(path).Length > 16384) return;
             var stored = JsonSerializer.Deserialize<Stored>(File.ReadAllText(path));
             if (stored is null) return;
-            string plain = Encoding.UTF8.GetString(LoginVault.Unprotect(Convert.FromBase64String(stored.Cipher)));
+            string plain = Encoding.UTF8.GetString(secrets.Unprotect(Convert.FromBase64String(stored.Cipher)));
             if (!IsValidUrl(plain)) return;
             url = plain; UserId = IsValidUserId(stored.UserId) ? stored.UserId : null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException or LoginVault.CryptographicException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException or SecretProtectionException) { }
     }
 
     public void Save(string webhookUrl, string? userId)
@@ -77,7 +79,7 @@ public sealed partial class DiscordWebhook : IDisposable
         string temporary = full + ".tmp";
         try
         {
-            File.WriteAllText(temporary, JsonSerializer.Serialize(new Stored(Convert.ToBase64String(LoginVault.Protect(Encoding.UTF8.GetBytes(clean))), id)));
+            File.WriteAllText(temporary, JsonSerializer.Serialize(new Stored(Convert.ToBase64String(secrets.Protect(Encoding.UTF8.GetBytes(clean))), id)));
             File.Move(temporary, full, true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

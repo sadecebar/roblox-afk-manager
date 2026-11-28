@@ -2,7 +2,7 @@ using System.IO;
 using System.Text.Json;
 using RobloxAfkManager.Core;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Engine;
 
 public sealed class ClientNameStore : IClientNameStore
 {

@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Text.Json;
 using RobloxAfkManager.Core;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Engine;
 
 public enum BoardState { Ok, Warn, Down, Idle }
 // Detail is text made by the manager itself and may contain Discord timestamp markup such as <t:1700000000:R>.
@@ -35,10 +35,10 @@ public sealed partial class DiscordWebhook
             if (!File.Exists(BoardWebhookFile) || new FileInfo(BoardWebhookFile).Length > 16384) return;
             var stored = JsonSerializer.Deserialize<Stored>(File.ReadAllText(BoardWebhookFile));
             if (stored is null) return;
-            string plain = System.Text.Encoding.UTF8.GetString(LoginVault.Unprotect(Convert.FromBase64String(stored.Cipher)));
+            string plain = System.Text.Encoding.UTF8.GetString(secrets.Unprotect(Convert.FromBase64String(stored.Cipher)));
             if (IsValidUrl(plain)) boardUrl = plain;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException or LoginVault.CryptographicException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException or SecretProtectionException) { }
     }
 
     // A message can only be edited through the webhook that posted it, so changing the channel starts a new board message.
@@ -50,7 +50,7 @@ public sealed partial class DiscordWebhook
         string full = Path.GetFullPath(BoardWebhookFile), temporary = full + ".tmp";
         try
         {
-            File.WriteAllText(temporary, JsonSerializer.Serialize(new Stored(Convert.ToBase64String(LoginVault.Protect(System.Text.Encoding.UTF8.GetBytes(clean))), null)));
+            File.WriteAllText(temporary, JsonSerializer.Serialize(new Stored(Convert.ToBase64String(secrets.Protect(System.Text.Encoding.UTF8.GetBytes(clean))), null)));
             File.Move(temporary, full, true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

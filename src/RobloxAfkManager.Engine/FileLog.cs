@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using RobloxAfkManager.Core;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Engine;
 
 public sealed class FileLog : IAppLog
 {

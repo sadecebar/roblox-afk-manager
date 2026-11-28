@@ -9,7 +9,7 @@
     <AssemblyName>RobloxAfkManager</AssemblyName>
     <Version>0.13.0</Version>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../RobloxAfkManager.Core/RobloxAfkManager.Core.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../RobloxAfkManager.Core/RobloxAfkManager.Core.csproj" /><ProjectReference Include="../RobloxAfkManager.Engine/RobloxAfkManager.Engine.csproj" /></ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Resource Include="Assets/RobloxAfkManager.ico" />

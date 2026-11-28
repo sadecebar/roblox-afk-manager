@@ -25,7 +25,7 @@ internal static class SessionWorkspaceTests
         });
         test("Lost logins show up as recent HTTP 401 bursts, never from game output or old lines", () =>
         {
-            string Http401(DateTimeOffset at) => Line(at, "Output", "x").Replace("[FLog::Output]", "[DFLog::HttpTraceError]") + " HttpResponse(#1) status:401 Unauthorized url:{ https://friends.roblox.com/v1/users/1/friends }";
+            string Http401(DateTimeOffset at) => Line(at, "Output", "x").Replace("[FLog::Output]", "[DFLog::HttpTraceError]") + " HttpResponse(#1) status:401 Unauthorized url:{ https://friends.roblox.com/v1/my/friends/count }";
             string burst = string.Join(Environment.NewLine, Enumerable.Range(0, 40).Select(i => Http401(Now.AddSeconds(-i))));
             Program.Check(SessionLogParser.Read(Join(Now.AddMinutes(-8)) + Environment.NewLine + burst, Process, Now).AuthFailures == 40);
             string old = string.Join(Environment.NewLine, Enumerable.Range(0, 40).Select(i => Http401(Now.AddMinutes(-30).AddSeconds(i))));

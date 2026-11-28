@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RobloxAfkManager.Tests", "t
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RobloxAfkManager.TestClient", "tests\RobloxAfkManager.TestClient\RobloxAfkManager.TestClient.csproj", "{80D8AB82-4B6B-45C7-AC03-C66BFCBB0EA4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RobloxAfkManager.Engine", "src\RobloxAfkManager.Engine\RobloxAfkManager.Engine.csproj", "{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -73,6 +75,18 @@ Global
 		{80D8AB82-4B6B-45C7-AC03-C66BFCBB0EA4}.Release|x64.Build.0 = Release|Any CPU
 		{80D8AB82-4B6B-45C7-AC03-C66BFCBB0EA4}.Release|x86.ActiveCfg = Release|Any CPU
 		{80D8AB82-4B6B-45C7-AC03-C66BFCBB0EA4}.Release|x86.Build.0 = Release|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Debug|x64.Build.0 = Debug|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Debug|x86.Build.0 = Debug|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Release|x64.ActiveCfg = Release|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Release|x64.Build.0 = Release|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Release|x86.ActiveCfg = Release|Any CPU
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -82,5 +96,6 @@ Global
 		{29CCB062-3E2E-461A-8CBA-55D3A56CEC35} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{5B85FD8F-18B8-4916-B968-116678B4BC7C} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{80D8AB82-4B6B-45C7-AC03-C66BFCBB0EA4} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{5C50D024-BB01-4B9A-ACCA-FBB64FC6D276} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

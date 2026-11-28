@@ -275,6 +275,7 @@ See [docs/TESTING.md](docs/TESTING.md) for all test options.
 
 ```text
 src/RobloxAfkManager.Core/     Identity, layout, session parsing and resource-policy logic
+src/RobloxAfkManager.Engine/   Behaviour with no user interface: saved logins, Discord alerts, settings stores (no WPF; see docs/ARCHITECTURE-PLAN.md)
 src/RobloxAfkManager.App/      WPF app (MVVM), Win32/DWM services, phone dashboard server
 src/RobloxAfkManager.Capture/  Small native Windows Graphics Capture bridge (C++)
 tests/                         Deterministic, desktop UI, native and browser tests

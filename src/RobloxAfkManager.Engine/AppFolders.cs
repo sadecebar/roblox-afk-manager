@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace RobloxAfkManager.App.Services;
+namespace RobloxAfkManager.Engine;
 
 // Where the manager keeps its own files. Automated tests point ROBLOXAFK_DATA at a throwaway folder so that they can
 // never read or write a real person's settings, saved logins or Discord webhook.

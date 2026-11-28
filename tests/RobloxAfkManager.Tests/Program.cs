@@ -1,4 +1,4 @@
-using BoardRow = RobloxAfkManager.App.Services.BoardRow;
+using BoardRow = RobloxAfkManager.Engine.BoardRow;
 using System.Net.Http;
 using System.IO;
 using RobloxAfkManager.Core;
@@ -8,10 +8,10 @@ namespace RobloxAfkManager.Tests;
 
 internal static class Program
 {
-    private sealed class RecordingLauncher : RobloxAfkManager.App.Services.IAccountLauncher
+    private sealed class RecordingLauncher : RobloxAfkManager.Engine.IAccountLauncher
     {
         public readonly List<(string Cookie, long Place)> Launched = [];
-        public Task<RobloxAfkManager.App.Services.SavedLogin> IdentifyAsync(string cookie, CancellationToken token) => Task.FromResult(new RobloxAfkManager.App.Services.SavedLogin(1, "x"));
+        public Task<RobloxAfkManager.Engine.SavedLogin> IdentifyAsync(string cookie, CancellationToken token) => Task.FromResult(new RobloxAfkManager.Engine.SavedLogin(1, "x"));
         public Task<string> PrepareAsync(string cookie, long placeId, CancellationToken token) => Task.FromResult("ticket");
         public readonly List<string?> LinkCodes = [];
         public readonly List<DateTime> Times = [];
@@ -20,8 +20,8 @@ internal static class Program
         public readonly List<string> Resolved = [];
         public Task<int> LaunchSafelyAsync(string cookie, long placeId, CancellationToken token, string? readyTicket = null, string? linkCode = null) { lock (Launched) { Launched.Add((cookie, placeId)); LinkCodes.Add(linkCode); Times.Add(DateTime.UtcNow); } return Task.FromResult(NextPid); }
         // Each share code maps to its own place and link code, so a test can tell the two servers apart.
-        public Task<RobloxAfkManager.App.Services.PrivateServer> ResolveShareLinkAsync(string cookie, string shareCode, CancellationToken token)
-        { lock (Resolved) Resolved.Add(shareCode); if (FailResolve) throw new InvalidOperationException("That private server link is no longer valid."); return Task.FromResult(new RobloxAfkManager.App.Services.PrivateServer(5000 + shareCode[0], "link-" + shareCode[..4])); }
+        public Task<RobloxAfkManager.Engine.PrivateServer> ResolveShareLinkAsync(string cookie, string shareCode, CancellationToken token)
+        { lock (Resolved) Resolved.Add(shareCode); if (FailResolve) throw new InvalidOperationException("That private server link is no longer valid."); return Task.FromResult(new RobloxAfkManager.Engine.PrivateServer(5000 + shareCode[0], "link-" + shareCode[..4])); }
     }
     private sealed class FakeDiscord : HttpMessageHandler
     {
@@ -36,7 +36,7 @@ internal static class Program
             return new HttpResponseMessage(code) { Content = new StringContent(reply) };
         }
     }
-    private sealed class FakeIdle : RobloxAfkManager.App.Services.IUserIdle { public TimeSpan Idle; public TimeSpan IdleFor() => Idle; }
+    private sealed class FakeIdle : RobloxAfkManager.Engine.IUserIdle { public TimeSpan Idle; public TimeSpan IdleFor() => Idle; }
     private sealed class FixedAccountLookup(long userId) : IAccountDetailsLookup
     {
         public Task<IReadOnlyDictionary<ProcessIdentity, string>> ResolveAsync(IReadOnlyList<ProcessIdentity> processes, CancellationToken cancellationToken) =>
@@ -77,9 +77,18 @@ internal static class Program
         // Tests must never read or write a real person's settings, saved logins or Discord webhook.
         string dataFolder = Path.Combine(Path.GetTempPath(), "rafk-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dataFolder);
-        Environment.SetEnvironmentVariable(RobloxAfkManager.App.Services.AppFolders.OverrideVariable, dataFolder);
+        Environment.SetEnvironmentVariable(RobloxAfkManager.Engine.AppFolders.OverrideVariable, dataFolder);
         AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { Directory.Delete(dataFolder, true); } catch (Exception) { } };
         if (args.Contains("--remote-demo")) { RemoteBrowserFixture.RunAsync().GetAwaiter().GetResult(); return 0; }
+        Test("Architecture: the engine references no user interface (WPF, Windows Forms) and not the app", () =>
+        {
+            string[] banned = ["PresentationFramework", "PresentationCore", "WindowsBase", "System.Xaml", "System.Windows.Forms", "RobloxAfkManager"];
+            foreach (var assembly in new[] { typeof(RobloxAfkManager.Engine.LoginVault).Assembly, typeof(RobloxAfkManager.Core.IWindowSystem).Assembly })
+            {
+                var bad = assembly.GetReferencedAssemblies().Select(a => a.Name).Where(n => banned.Contains(n)).ToArray();
+                Check(bad.Length == 0, $"{assembly.GetName().Name} references {string.Join(", ", bad)}");
+            }
+        });
         Test("Preset layouts use the full working area without overlap", () =>
         {
             foreach (int rows in new[] { 2, 3, 4 })
@@ -171,7 +180,7 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-open-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat"));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat"));
                 vault.Save(1, "alpha", new string('a', 120)); vault.Save(2, "bravo", new string('b', 120));
                 var launcher = new RecordingLauncher();
                 using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root);
@@ -198,12 +207,12 @@ internal static class Program
             try
             {
                 var store = new MemoryWorkspaceStore(); store.Write(new([new AccountProfile(77, "My alt", 0, false, null, Window: new SavedPlacement(new(10, 20, 600, 400), false))], []));
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "secretname", new string('c', 150));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "secretname", new string('c', 150));
                 string file = Path.Combine(root, "backup.json");
                 using (var first = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: store, accountLauncher: new RecordingLauncher(), loginVault: vault, settingsFolder: root))
                     first.BackupSettings(file);
                 Check(File.ReadAllText(file).Contains("My alt") && !File.ReadAllText(file).Contains(new string('c', 20)));
-                using var second = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(), loginVault: new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "none.dat")), settingsFolder: root);
+                using var second = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(), loginVault: new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "none.dat")), settingsFolder: root);
                 Check(second.SavedProfileCount == 0);
                 second.RestoreSettings(file);
                 Check(second.SavedProfileCount == 1 && !second.Warning);
@@ -219,11 +228,11 @@ internal static class Program
             try
             {
                 string good = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH_-0123";
-                Check(RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl(good) && RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl(good.Replace("discord.com", "ptb.discord.com")));
-                Check(!RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl("https://evil.example/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz")
-                    && !RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl("http://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz")
-                    && !RobloxAfkManager.App.Services.DiscordWebhook.IsValidUrl("https://discord.com.evil.example/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz"));
-                using (var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()))
+                Check(RobloxAfkManager.Engine.DiscordWebhook.IsValidUrl(good) && RobloxAfkManager.Engine.DiscordWebhook.IsValidUrl(good.Replace("discord.com", "ptb.discord.com")));
+                Check(!RobloxAfkManager.Engine.DiscordWebhook.IsValidUrl("https://evil.example/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz")
+                    && !RobloxAfkManager.Engine.DiscordWebhook.IsValidUrl("http://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz")
+                    && !RobloxAfkManager.Engine.DiscordWebhook.IsValidUrl("https://discord.com.evil.example/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz"));
+                using (var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()))
                 {
                     Check(!hook.Configured);
                     bool refused = false; try { hook.Save("https://example.com/x", null); } catch (ArgumentException) { refused = true; }
@@ -232,7 +241,7 @@ internal static class Program
                 }
                 string onDisk = File.ReadAllText(Path.Combine(root, "webhook.dat"));
                 Check(!onDisk.Contains("abcdefghijkl") && !onDisk.Contains("discord.com"));
-                using var again = new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord());
+                using var again = new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord());
                 Check(again.Configured && again.UserId == "111222333444555666");
                 again.Clear();
                 Check(!again.Configured && !File.Exists(Path.Combine(root, "webhook.dat")));
@@ -245,9 +254,9 @@ internal static class Program
             try
             {
                 var fake = new FakeDiscord();
-                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(150));
+                using var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(150));
                 hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", "111222333444555666");
-                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Roblox's log reports a disconnect.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Notice);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Roblox's log reports a disconnect.", true), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Notice);
                 for (int i = 0; i < 40 && fake.Requests.Count == 0; i++) Thread.Sleep(50);
                 Check(fake.Requests.Count == 1);
                 using (var quiet = System.Text.Json.JsonDocument.Parse(fake.Requests[0].Body))
@@ -255,8 +264,8 @@ internal static class Program
                     Check(quiet.RootElement.GetProperty("content").ValueKind == System.Text.Json.JsonValueKind.Null);
                     Check(quiet.RootElement.GetProperty("allowed_mentions").GetProperty("users").GetArrayLength() == 0);
                 }
-                Thread.Sleep(400); hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Disconnected again.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Notice);
-                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt2", "Could not be reopened automatically: login expired.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                Thread.Sleep(400); hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Disconnected again.", true), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Notice);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt2", "Could not be reopened automatically: login expired.", true), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Problem);
                 for (int i = 0; i < 40 && fake.Requests.Count < 2; i++) Thread.Sleep(50);
                 Check(fake.Requests.Count == 2);
                 using var loud = System.Text.Json.JsonDocument.Parse(fake.Requests[1].Body);
@@ -270,7 +279,7 @@ internal static class Program
             try
             {
                 var fake = new FakeDiscord();
-                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(150));
+                using var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(150));
                 hook.Enqueue(new(DateTimeOffset.UtcNow, "ignored", "not sent: nothing saved yet", true), true);
                 Thread.Sleep(400); Check(fake.Requests.Count == 0);
                 hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", "111222333444555666");
@@ -304,16 +313,16 @@ internal static class Program
             try
             {
                 var fake = new FakeDiscord();
-                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(100));
+                using var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(100));
                 hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", "111222333444555666");
                 var down = DateTimeOffset.UtcNow.AddMinutes(-3);
-                hook.Enqueue(new(down, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
-                hook.Enqueue(new(down, "alt2", "Roblox's log reports a disconnect.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                hook.Enqueue(new(down, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Problem);
+                hook.Enqueue(new(down, "alt2", "Roblox's log reports a disconnect.", true), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Problem);
                 for (int i = 0; i < 40 && fake.Requests.Count < 1; i++) Thread.Sleep(50);
                 Thread.Sleep(200);
                 Check(fake.Requests.Count == 1 && fake.Requests[0].Method == "POST" && fake.Requests[0].Url.EndsWith("?wait=true"));
                 // alt1 returns: the same message is edited, nothing new is posted
-                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Back online.", false), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Recovery);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Back online.", false), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Recovery);
                 for (int i = 0; i < 40 && fake.Requests.Count < 2; i++) Thread.Sleep(50);
                 Thread.Sleep(200);
                 Check(fake.Requests.Count == 2 && fake.Requests[1].Method == "PATCH" && fake.Requests[1].Url.Contains("/messages/700000000000000001"));
@@ -327,7 +336,7 @@ internal static class Program
                     Check(first.RootElement.GetProperty("content").GetString() == "<@111222333444555666>"); // still shown while something is down
                 }
                 // alt2 returns: everything is back, the mention text is removed
-                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt2", "A new game join was reported by Roblox.", false), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Recovery);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt2", "A new game join was reported by Roblox.", false), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Recovery);
                 for (int i = 0; i < 40 && fake.Requests.Count < 3; i++) Thread.Sleep(50);
                 Thread.Sleep(200);
                 Check(fake.Requests.Count == 3 && fake.Requests[2].Method == "PATCH");
@@ -337,10 +346,10 @@ internal static class Program
                     Check(last.RootElement.GetProperty("content").GetString() == "");
                 }
                 // an account nobody was told about, and one that fails and recovers in the same moment, send nothing new
-                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt9", "Back online.", false), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Recovery);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt9", "Back online.", false), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Recovery);
                 Thread.Sleep(400); Check(fake.Requests.Count == 3);
                 // a second failure of the same account is a new message (and a new ping)
-                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Problem);
                 for (int i = 0; i < 40 && fake.Requests.Count < 4; i++) Thread.Sleep(50);
                 Thread.Sleep(200);
                 Check(fake.Requests.Count == 4 && fake.Requests[3].Method == "POST");
@@ -353,10 +362,10 @@ internal static class Program
             try
             {
                 var fake = new FakeDiscord(); var idle = new FakeIdle { Idle = TimeSpan.FromMinutes(30) };
-                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(80));
+                using var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(80));
                 hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", null);
                 using var vm = new MainViewModel(new FakeWindowSystem(1), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(),
-                    loginVault: new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root, discordWebhook: hook, userIdle: idle);
+                    loginVault: new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root, discordWebhook: hook, userIdle: idle);
                 vm.RefreshAsync().GetAwaiter().GetResult();
                 string label = vm.Clients[0].Label;
                 vm.Announce(new(DateTimeOffset.UtcNow, label, "Window closed or is no longer detected.", true), true);
@@ -376,7 +385,7 @@ internal static class Program
             try
             {
                 var fake = new FakeDiscord();
-                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50));
+                using var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50));
                 hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", null);
                 fake.Replies.Enqueue((System.Net.HttpStatusCode.TooManyRequests, "{\"retry_after\": 0.5}"));
                 Check(hook.TestAsync().GetAwaiter().GetResult() == "Last alert sent." && fake.Requests.Count == 2); // retried once, then delivered
@@ -392,10 +401,10 @@ internal static class Program
             try
             {
                 var fake = new FakeDiscord(); var idle = new FakeIdle();
-                var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50));
+                var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50));
                 hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", "111222333444555666");
                 MainViewModel Make() => new(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(),
-                    loginVault: new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root, discordWebhook: hook, userIdle: idle);
+                    loginVault: new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root, discordWebhook: hook, userIdle: idle);
                 using (var vm = Make())
                 {
                     Check(!vm.IsAway && vm.AwayLabel == "At PC");
@@ -431,13 +440,13 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-reopen-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
                 // Runs one crash with the person idle for the given time; returns the launches and the view model's activity.
                 (List<(string Cookie, long Place)> Launched, string[] Activity) Crash(TimeSpan idleFor, bool enabled)
                 {
                     string folder = Path.Combine(root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
                     var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks); var idle = new FakeIdle { Idle = idleFor }; var launcher = new RecordingLauncher();
-                    using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(folder, new FakeDiscord());
+                    using var hook = new RobloxAfkManager.Engine.DiscordWebhook(folder, new FakeDiscord());
                     using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new FixedAccountLookup(77), workspaceStore: new MemoryWorkspaceStore(),
                         accountLauncher: launcher, loginVault: vault, settingsFolder: folder, discordWebhook: hook, userIdle: idle) { ReopenAfter = TimeSpan.FromMilliseconds(200) };
                     vm.GameLink = "1818";
@@ -466,12 +475,12 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-kicked-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
                 (int Launched, int Closing, string[] Activity) Run(TimeSpan disconnectedFor)
                 {
                     string folder = Path.Combine(root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
                     var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks); var launcher = new RecordingLauncher();
-                    using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(folder, new FakeDiscord());
+                    using var hook = new RobloxAfkManager.Engine.DiscordWebhook(folder, new FakeDiscord());
                     using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new DisconnectedAccountLookup(77, disconnectedFor), workspaceStore: new MemoryWorkspaceStore(),
                         accountLauncher: launcher, loginVault: vault, settingsFolder: folder, discordWebhook: hook, userIdle: new FakeIdle { Idle = TimeSpan.FromMinutes(10) });
                     vm.GameLink = "1818"; vm.AutoReopen = true;
@@ -529,11 +538,11 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-servers-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat"));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat"));
                 for (int i = 1; i <= 3; i++) vault.Save(i, "acc" + i, new string((char)('a' + i), 130));
                 var launcher = new RecordingLauncher();
                 using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
                 Check(!vm.HasLaunchTarget);
                 vm.PrivateServer1Link = "https://www.roblox.com/share?code=" + a + "&type=Server";
                 vm.PrivateServer2Link = "https://www.roblox.com/share?code=" + b + "&type=Server";
@@ -548,7 +557,7 @@ internal static class Program
                 Check(launcher.Resolved.Count == 2, "each share link should be resolved once, not per account: " + launcher.Resolved.Count);
                 // Survives a restart of the manager.
                 using var again = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(), loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
                 Check(again.PrivateServer1Link.Contains(a) && again.PrivateServer2Link.Contains(b) && again.AccountsOnServer1 == 2);
                 // Changing the split moves accounts.
                 again.AccountsOnServer1 = 1; Check(again.ServerSummary.Contains("first 1"));
@@ -561,10 +570,10 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-reset-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130)); vault.Save(88, "Offline", new string('o', 130));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130)); vault.Save(88, "Offline", new string('o', 130));
                 var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddMinutes(-5).Ticks); var launcher = new RecordingLauncher();
                 using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new FixedAccountLookup(77), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { ResetDelay = TimeSpan.FromMilliseconds(600), LaunchSpacingSeconds = 5 };
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { ResetDelay = TimeSpan.FromMilliseconds(600), LaunchSpacingSeconds = 5 };
                 vm.PrivateServer1Link = a;
                 void Refresh() { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(80); }
                 for (int i = 0; i < 40 && vm.Clients.FirstOrDefault()?.AccountId != 77; i++) Refresh();
@@ -591,7 +600,7 @@ internal static class Program
         Test("A lost login is judged only from account services: game-feature 401s from apis.roblox.com are ignored", () =>
         {
             string feature = "2026-11-28T00:24:24.786Z,68.786301,76bc,12 [DFLog::HttpTraceError] HttpResponse(#303 0x1f1bf6d77f8) time:134.0ms (net:133.9ms timeInRetryQueue:0.0ms)status:401 Unauthorized bodySize:76 url:{ \"https://apis.roblox.com/virtual-events/v1/virtual-events/6987990443418059361\" } ip:128.116.44.3";
-            string account = feature.Replace("https://apis.roblox.com/virtual-events/v1/virtual-events/6987990443418059361", "https://friends.roblox.com/v1/users/123/friends");
+            string account = feature.Replace("https://apis.roblox.com/virtual-events/v1/virtual-events/6987990443418059361", "https://friends.roblox.com/v1/my/friends/count");
             Check(!SessionLogParser.TryReadAuthFailure(feature, out _), "an event-feature 401 counted as a lost login");
             Check(SessionLogParser.TryReadAuthFailure(account, out _), "a 401 from an account service no longer counts");
         });
@@ -600,10 +609,10 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-rejoin-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
                 var launcher = new RecordingLauncher();
                 using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
                 Check(!vm.OpenClosedCommand.CanExecute(null), "enabled with nothing to open to");
                 vm.GameLink = "1818";
                 Check(vm.OpenClosedCommand.CanExecute(null), "not enabled although an account is missing");
@@ -621,10 +630,10 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-twin-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
                 var fake = new FakeWindowSystem(2, DateTime.UtcNow.AddMinutes(-30).Ticks); var launcher = new RecordingLauncher();
                 using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new TwoWindowsLookup(77), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle { Idle = TimeSpan.FromMinutes(10) });
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle { Idle = TimeSpan.FromMinutes(10) });
                 vm.GameLink = "1818"; vm.AutoReopen = true;
                 for (int i = 0; i < 40 && fake.Closing.Count == 0; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(100); }
                 for (int i = 0; i < 6; i++) { vm.RefreshAsync().GetAwaiter().GetResult(); Thread.Sleep(100); }
@@ -640,11 +649,11 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-fallback-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
                 var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks);
                 var launcher = new RecordingLauncher { NextPid = 101 }; // the pid of the one window: it stays on the loading screen
                 using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new AccountNameTests.EmptyLookup(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { PrivateJoinPatience = TimeSpan.FromMilliseconds(400), LaunchSpacingSeconds = 5 };
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { PrivateJoinPatience = TimeSpan.FromMilliseconds(400), LaunchSpacingSeconds = 5 };
                 vm.GameLink = "1818"; vm.PrivateServer1Link = a;
                 vm.OpenClosedCommand.Execute(null);
                 for (int i = 0; i < 100 && launcher.Launched.Count < 1; i++) Thread.Sleep(50);
@@ -663,11 +672,11 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-chain-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
                 var fake = new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks);
                 var launcher = new RecordingLauncher { NextPid = 101 };
                 using var vm = new MainViewModel(fake, new TestLog(), accountNameLookup: new AccountNameTests.EmptyLookup(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { PrivateJoinPatience = TimeSpan.FromMilliseconds(400), LaunchSpacingSeconds = 5 };
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle()) { PrivateJoinPatience = TimeSpan.FromMilliseconds(400), LaunchSpacingSeconds = 5 };
                 vm.GameLink = "1818"; vm.PrivateServer1Link = a; vm.PrivateServer2Link = b;
                 vm.OpenClosedCommand.Execute(null);
                 for (int i = 0; i < 100 && launcher.Launched.Count < 1; i++) Thread.Sleep(50);
@@ -685,10 +694,10 @@ internal static class Program
             string root = Path.Combine(Path.GetTempPath(), "rafk-badlink-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
             {
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(77, "FixtureRanger", new string('r', 130));
                 var launcher = new RecordingLauncher { FailResolve = true };
                 using var vm = new MainViewModel(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: launcher, loginVault: vault, settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: new FakeIdle());
                 vm.GameLink = "1818"; vm.PrivateServer1Link = a;
                 vm.OpenClosedCommand.Execute(null);
                 for (int i = 0; i < 100 && launcher.Launched.Count < 1; i++) Thread.Sleep(50);
@@ -704,8 +713,8 @@ internal static class Program
             {
                 var idle = new FakeIdle(); // zero: actively using the PC
                 MainViewModel Make() => new(new FakeWindowSystem(0), new TestLog(), workspaceStore: new MemoryWorkspaceStore(), accountLauncher: new RecordingLauncher(),
-                    loginVault: new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root,
-                    discordWebhook: new RobloxAfkManager.App.Services.DiscordWebhook(root, new FakeDiscord()), userIdle: idle);
+                    loginVault: new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")), settingsFolder: root,
+                    discordWebhook: new RobloxAfkManager.Engine.DiscordWebhook(root, new FakeDiscord()), userIdle: idle);
                 using (var vm = Make())
                 {
                     Check(!vm.IsAway && vm.AwayLabel == "At PC" && !vm.SleepMode);
@@ -724,9 +733,9 @@ internal static class Program
             {
                 const string good = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH";
                 var fake = new FakeDiscord();
-                BoardRow Row(string n, RobloxAfkManager.App.Services.BoardState st, string d) => new(n, st, d);
-                var ok = RobloxAfkManager.App.Services.BoardState.Ok; var down = RobloxAfkManager.App.Services.BoardState.Down;
-                using (var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(120)))
+                BoardRow Row(string n, RobloxAfkManager.Engine.BoardState st, string d) => new(n, st, d);
+                var ok = RobloxAfkManager.Engine.BoardState.Ok; var down = RobloxAfkManager.Engine.BoardState.Down;
+                using (var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(120)))
                 {
                     hook.Save(good, null);
                     Check(!hook.BoardEnabled); hook.QueueBoard([Row("alt1", ok, "Running")]); Thread.Sleep(300); Check(fake.Requests.Count == 0, "board sent while off");
@@ -755,7 +764,7 @@ internal static class Program
                 }
                 // A restart picks up the same message.
                 int before = fake.Requests.Count;
-                using (var again = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(50)))
+                using (var again = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(50)))
                 {
                     Check(again.BoardEnabled);
                     again.QueueBoard([Row("alt1", ok, "Running")]);
@@ -789,8 +798,8 @@ internal static class Program
                 const string alerts = "https://discord.com/api/webhooks/123456789012345678/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
                 const string boardHook = "https://discord.com/api/webhooks/987654321098765432/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
                 var fake = new FakeDiscord();
-                var ok = RobloxAfkManager.App.Services.BoardState.Ok;
-                using (var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(60)))
+                var ok = RobloxAfkManager.Engine.BoardState.Ok;
+                using (var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(60)))
                 {
                     hook.SetBoard(true); Check(!hook.BoardEnabled, "a board needs somewhere to go");
                     hook.Save(alerts, null); hook.SetBoard(true); Check(hook.BoardEnabled && !hook.BoardHasOwnWebhook);
@@ -807,14 +816,14 @@ internal static class Program
                     Check(fake.Requests[^1].Method == "POST" && fake.Requests[^1].Url.Contains("987654321098765432"), "the board did not move to its own channel");
                     // Alerts still go to the alerts channel, not the board channel.
                     int before = fake.Requests.Count;
-                    hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.App.Services.DiscordWebhook.AlertKind.Problem);
+                    hook.Enqueue(new(DateTimeOffset.UtcNow, "alt1", "Window closed or is no longer detected.", true), RobloxAfkManager.Engine.DiscordWebhook.AlertKind.Problem);
                     for (int i = 0; i < 40 && fake.Requests.Count <= before; i++) Thread.Sleep(50);
                     Thread.Sleep(150);
                     Check(fake.Requests[^1].Url.Contains("123456789012345678") && fake.Requests[^1].Method == "POST", "alerts must stay in the alerts channel");
                 }
                 string stored = string.Concat(Directory.GetFiles(root).Select(File.ReadAllText));
                 Check(!stored.Contains("BBBBBBBB") && !stored.Contains("987654321098765432"), "the board webhook must be stored encrypted");
-                using (var again = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(60)))
+                using (var again = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(60)))
                 {
                     Check(again.BoardHasOwnWebhook && again.BoardEnabled, "the board channel was not remembered");
                     int before = fake.Requests.Count;
@@ -833,8 +842,8 @@ internal static class Program
             try
             {
                 var fake = new FakeDiscord();
-                var vault = new RobloxAfkManager.App.Services.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(88, "SleepyAlt", new string('s', 130));
-                using var hook = new RobloxAfkManager.App.Services.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(50));
+                var vault = new RobloxAfkManager.Engine.LoginVault(Path.Combine(root, "logins.dat")); vault.Save(88, "SleepyAlt", new string('s', 130));
+                using var hook = new RobloxAfkManager.Engine.DiscordWebhook(root, fake, TimeSpan.FromMilliseconds(50), boardInterval: TimeSpan.FromMilliseconds(50));
                 hook.Save("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGH", null);
                 using var vm = new MainViewModel(new FakeWindowSystem(1, DateTime.UtcNow.AddSeconds(-30).Ticks), new TestLog(), accountNameLookup: new FixedAccountLookup(77), workspaceStore: new MemoryWorkspaceStore(),
                     accountLauncher: new RecordingLauncher(), loginVault: vault, settingsFolder: root, discordWebhook: hook, userIdle: new FakeIdle());

@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything the manager does, with no user interface. Plain net10.0 on purpose: WPF cannot be referenced from here,
+       so a change to the window can never reach this project. Windows calls come in through interfaces (Platform.Windows). -->
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><RootNamespace>RobloxAfkManager.Engine</RootNamespace></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../RobloxAfkManager.Core/RobloxAfkManager.Core.csproj" /></ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="RobloxAfkManager.Tests" /></ItemGroup>
+</Project>
