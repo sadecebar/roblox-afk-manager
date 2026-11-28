@@ -125,6 +125,39 @@ internal static class Program
             }
             Check(bad.Count == 0, "view-models expose WPF types: " + string.Join(", ", bad));
         });
+        Test("Architecture: the window has no logic: view-models never touch files, the network, processes or Windows; only listed view classes call Windows", () =>
+        {
+            var app = typeof(RobloxAfkManager.App.ViewModels.MainViewModel).Assembly;
+            // Every call a view-model makes (lambdas included), read from its compiled IL.
+            static IEnumerable<System.Reflection.MethodBase> Calls(System.Reflection.MethodBase method)
+            {
+                var il = method.GetMethodBody()?.GetILAsByteArray(); if (il is null) yield break;
+                for (int i = 0; i + 4 < il.Length; i++)
+                {
+                    if (il[i] is not (0x28 or 0x6F or 0x73)) continue; // call, callvirt, newobj
+                    System.Reflection.MethodBase? target = null;
+                    try { target = method.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1), method.DeclaringType?.GetGenericArguments(), method.IsGenericMethod ? method.GetGenericArguments() : null); }
+                    catch (Exception) { }
+                    if (target is not null) yield return target;
+                }
+            }
+            static bool Forbidden(Type type) => type.Namespace is { } ns && (
+                (ns == "System.IO" && type != typeof(Path)) || ns.StartsWith("System.Net", StringComparison.Ordinal) || ns.StartsWith("Microsoft.Win32", StringComparison.Ordinal)
+                || type == typeof(System.Diagnostics.Process) || type == typeof(System.Runtime.InteropServices.Marshal) || ns.StartsWith("RobloxAfkManager.Platform", StringComparison.Ordinal));
+            var all = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly;
+            var viewModels = app.GetTypes().Where(t => t.Namespace == "RobloxAfkManager.App.ViewModels").ToArray();
+            var bad = viewModels.SelectMany(t => t.GetMethods(all).Cast<System.Reflection.MethodBase>().Concat(t.GetConstructors(all)))
+                .SelectMany(m => Calls(m).Where(c => c.DeclaringType is { } d && Forbidden(d)).Select(c => $"{m.DeclaringType!.Name}.{m.Name} → {c.DeclaringType!.Name}.{c.Name}"))
+                .Distinct().ToArray();
+            Check(bad.Length == 0, "view-models do work that belongs in the engine or a service: " + string.Join("; ", bad));
+            // The scan itself works: it does see the folder deletion in the login-profile helper.
+            Check(typeof(RobloxAfkManager.App.Services.LoginProfiles).GetMethods(all).SelectMany(m => Calls(m)).Any(c => c.DeclaringType == typeof(Directory)), "the IL scan finds nothing, so it proves nothing");
+            // Direct Windows calls in the app are allowed only for drawing and showing things: the tray notification and phone screenshots.
+            string[] allowed = ["DesktopAlerts", "WindowScreenshot"];
+            var native = app.GetTypes().SelectMany(t => t.GetMethods(all)).Where(m => m.Attributes.HasFlag(System.Reflection.MethodAttributes.PinvokeImpl))
+                .Select(m => m.DeclaringType!).Select(t => t.DeclaringType ?? t).Select(t => t.Name).Distinct().Where(n => !allowed.Contains(n)).ToArray();
+            Check(native.Length == 0, "Windows calls outside the listed view classes: " + string.Join(", ", native));
+        });
         Test("The engine runs with no window: it detects clients, reads their accounts and reports their status as plain data", () =>
         {
             string root = Path.Combine(Path.GetTempPath(), "rafk-engine-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);

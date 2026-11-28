@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A throwaway second front-end: proof that the engine runs without the WPF app (docs/ARCHITECTURE-PLAN.md, M6).
+       It references the engine and the Windows plumbing, never RobloxAfkManager.App. Not part of the release package. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>RobloxAfkManager.ConsoleView</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/RobloxAfkManager.Core/RobloxAfkManager.Core.csproj" />
+    <ProjectReference Include="../../src/RobloxAfkManager.Engine/RobloxAfkManager.Engine.csproj" />
+    <ProjectReference Include="../../src/RobloxAfkManager.Platform.Windows/RobloxAfkManager.Platform.Windows.csproj" />
+  </ItemGroup>
+</Project>

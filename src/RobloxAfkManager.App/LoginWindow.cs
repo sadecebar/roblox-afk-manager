@@ -15,8 +15,8 @@ namespace RobloxAfkManager.App;
 // the cookie stays valid. You type your own username and password; the manager never sees or stores them.
 public sealed class LoginWindow : Window
 {
-    public static string BrowserRoot => Path.Combine(AppFolders.Data, "browser");
-    public static string ProfileFolder(long userId) => Path.Combine(BrowserRoot, userId.ToString());
+    public static string BrowserRoot => LoginProfiles.BrowserRoot;
+    public static string ProfileFolder(long userId) => LoginProfiles.ProfileFolder(userId);
 
     // The login window is for Roblox's own pages only. A link, redirect or pop-up that tries to open anything else is
     // refused, so a look-alike page can never appear inside a window that has just asked for a password.

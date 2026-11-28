@@ -31,7 +31,7 @@ engine.Start();                                       // crash marker and "manag
 await engine.RefreshAsync();                          // then on a timer and whenever windows change
 ```
 
-Call `WindowsPlatform.Install()` once at startup (it plugs Windows DPAPI in for saved logins and webhooks). `MainViewModel` is the working example: it builds the engine, chooses Windows or test implementations and mirrors the state.
+Call `WindowsPlatform.Install()` once at startup (it plugs Windows DPAPI in for saved logins and webhooks). `Services/EngineFactory` builds the engine for the WPF app (Windows implementations, or the fakes a test passes in) and `MainViewModel` mirrors its state. `samples/RobloxAfkManager.ConsoleView` is a second, much smaller example: a text dashboard that uses nothing but this contract.
 
 ## State
 

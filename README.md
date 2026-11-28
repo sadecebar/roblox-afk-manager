@@ -279,6 +279,7 @@ src/RobloxAfkManager.Engine/   Behaviour with no user interface: launching, save
 src/RobloxAfkManager.Platform.Windows/  Win32 behind the engine's interfaces: windows, processes, log owners, idle time, DPAPI
 src/RobloxAfkManager.App/      WPF app (MVVM), live previews (DWM), phone dashboard server
 src/RobloxAfkManager.Capture/  Small native Windows Graphics Capture bridge (C++)
+samples/                       A console view on the same engine (proof that the engine runs without the WPF app; not shipped)
 tests/                         Deterministic, desktop UI, native and browser tests
 assets/                        Original app icon artwork
 tools/                         Icon export and repository privacy check

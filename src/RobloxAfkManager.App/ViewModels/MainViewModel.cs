@@ -13,7 +13,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable, IUser
     private readonly IWindowSystem windows;
     private readonly IAppLog log;
     private readonly WindowMonitor? monitor;
-    private readonly IAccountNameLookup? accountNames;
     private readonly AfkEngine engine;
     private readonly Dictionary<EngineClient, ClientTileViewModel> tiles = [];
     private bool busy, warning, disposed;
@@ -56,25 +55,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable, IUser
         IAccountLauncher? accountLauncher = null, LoginVault? loginVault = null, string? settingsFolder = null, DiscordWebhook? discordWebhook = null, IUserIdle? userIdle = null)
     {
         // The real app runs on Windows; a test passes fakes, and then nothing touches the person's real files or webhook.
-        log = appLog ?? new FileLog(); windows = windowSystem ?? new Win32WindowSystem(log);
-        bool real = windows is Win32WindowSystem;
-        accountNames = accountNameLookup ?? (real ? new LogAccountNameLookup(owners: LogFileOwners.Read, stateFile: System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxAfkManager", "process-accounts.txt")) : null);
-        var system = new Win32ProcessResources();
-        engine = new AfkEngine(new EngineOptions
-        {
-            Windows = windows, Log = log,
-            Resources = resourceSystem ?? system, WorkingSet = workingSetSystem ?? system,
-            AccountLookup = accountNames,
-            ClientNames = clientNameStore ?? (real ? new ClientNameStore() : new MemoryClientNameStore()),
-            Workspace = workspaceStore ?? (real ? new WorkspaceStore() : new MemoryWorkspaceStore()),
-            Launcher = accountLauncher ?? new AccountLauncher(new WindowsRobloxClients()),
-            Vault = loginVault ?? new LoginVault(),
-            SettingsFolder = settingsFolder ?? AppFolders.Data,
-            // Test hosts never touch the real webhook file, so a test can't post to someone's channel.
-            Webhook = discordWebhook ?? (real ? new DiscordWebhook(log: log) : new DiscordWebhook(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rafk-no-webhook"), log: log)),
-            Idle = userIdle ?? (real ? new Win32UserIdle() : new NeverIdle()),
-            Prompts = this,
-        });
+        (engine, windows, log) = EngineFactory.Create(this, windowSystem, appLog, resourceSystem, workingSetSystem, accountNameLookup, clientNameStore,
+            workspaceStore, accountLauncher, loginVault, settingsFolder, discordWebhook, userIdle);
         engine.StateChanged += OnEngineState;
         engine.StatusChanged += (text, warn) => { Warning = warn; if (text is not null) Message = text; };
         engine.BusyChanged += () => Busy = engine.Busy;
@@ -101,7 +83,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable, IUser
         ApplyMemoryCapCommand = new(() => engine.ApplyMemoryCapAsync(int.Parse(MemoryCapInput)),
             () => !Busy && IncludedCount > 0 && int.TryParse(MemoryCapInput, out int cap) && cap is >= 256 and <= 8192, HandleError);
         ResetMemoryCapCommand = new(engine.ResetMemoryCapAsync, () => !Busy && (engine.MemoryCapMiB is not null || engine.MemoryCapSavedCount > 0), HandleError);
-        if (windows is Win32WindowSystem native) monitor = new(native, log, () => _ = RefreshAsync());
+        monitor = EngineFactory.WatchWindows(windows, log, () => _ = RefreshAsync());
         engine.Start();
     }
 

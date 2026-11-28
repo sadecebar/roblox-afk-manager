@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using RobloxAfkManager.App.Services;
 using RobloxAfkManager.Core;
 
 namespace RobloxAfkManager.App.ViewModels;
@@ -88,18 +89,12 @@ public sealed partial class MainViewModel
             p => !launch.Launching && HasLaunchTarget && p is SavedLoginView { Running: false }, HandleError);
         RemoveLoginCommand = new(parameter =>
         {
-            if (parameter is SavedLoginView view) { vault.Remove(view.UserId); selectedLogins.Remove(view.UserId); ForgetBrowserProfile(view.UserId); RefreshLogins(); Message = $"{view.Name}'s saved login was removed."; Warning = false; }
+            if (parameter is SavedLoginView view) { vault.Remove(view.UserId); selectedLogins.Remove(view.UserId); LoginProfiles.Forget(view.UserId); RefreshLogins(); Message = $"{view.Name}'s saved login was removed."; Warning = false; }
             return Task.CompletedTask;
         }, _ => !launch.Launching, HandleError);
         ResetServersCommand = new(launch.ResetServersAsync, () => launch.CanResetServers(engine.Disposed), HandleError);
         ResplitServersCommand = new(() => { launch.Resplit(); return Task.CompletedTask; }, () => !launch.Launching, HandleError);
         RefreshLogins();
-    }
-
-    private static void ForgetBrowserProfile(long userId)
-    {
-        try { var folder = LoginWindow.ProfileFolder(userId); if (System.IO.Directory.Exists(folder)) System.IO.Directory.Delete(folder, true); }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { /* Left behind; harmless. */ }
     }
 
     private void RaiseServers()
