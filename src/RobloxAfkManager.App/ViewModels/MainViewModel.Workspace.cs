@@ -153,7 +153,7 @@ public sealed partial class MainViewModel
             Announce(entry, entry.Warning, quiet: RepairedAutomatically(entry));
         }
         AnnounceReturns();
-        TrackReopen(); EscalateStuck();
+        keeper.Track(IsAway); EscalateStuck();
         UpdateBoard();
         if (events.Count > 0) { RaiseUnread(); Raise(nameof(HasActivity)); SaveWorkspace(); }
     }

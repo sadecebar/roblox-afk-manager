@@ -67,7 +67,7 @@ public sealed partial class MainViewModel
         "Standby" => "Discord alerts are set up but on standby while you're at the PC. They start when you're away, or in Sleep mode. Click to open the alert settings.",
         _ => "Discord alerts are off. Click to set them up.",
     };
-    public string ReopenState => !autoReopen ? "Off" : IsAway ? "On" : "Standby";
+    public string ReopenState => !keeper.AutoReopen ? "Off" : IsAway ? "On" : "Standby";
     public string ReopenLabel => "Rejoin " + ReopenState.ToLowerInvariant();
     public string ReopenHint => ReopenState switch
     {
@@ -76,12 +76,6 @@ public sealed partial class MainViewModel
         _ => "Automatic rejoin is off. Click to turn it on: crashed or kicked accounts are reopened while you're away.",
     };
     private void RaiseIndicators() { Raise(nameof(AlertsState)); Raise(nameof(AlertsLabel)); Raise(nameof(AlertsHint)); Raise(nameof(ReopenState)); Raise(nameof(ReopenLabel)); Raise(nameof(ReopenHint)); }
-    public void ToggleReopen()
-    {
-        if (!autoReopen && !HasLaunchTarget) { Warning = true; Message = "Set a game first (Settings → Accounts → Game), then turn automatic rejoin on."; return; }
-        if (!autoReopen && vault.Logins.Count == 0) { Warning = true; Message = "Automatic rejoin needs a saved login. Add one in Settings → Accounts."; return; }
-        AutoReopen = !autoReopen;
-    }
     private void RaiseAway() { RaiseIndicators(); Raise(nameof(AwayModeIndex)); Raise(nameof(AwayMinutes)); Raise(nameof(IsAway)); Raise(nameof(AwayLabel)); Raise(nameof(SleepMode)); Raise(nameof(AwayHint)); }
 
     private void LoadAway()
@@ -149,12 +143,12 @@ public sealed partial class MainViewModel
     private bool HasSavedLogin(string label)
     {
         var saved = vault.Logins.Select(l => l.UserId).ToHashSet();
-        long? id = Clients.FirstOrDefault(c => c.Label == label)?.AccountId ?? accountLabels.FirstOrDefault(p => p.Value == label).Key;
+        long? id = Clients.FirstOrDefault(c => c.Label == label)?.AccountId ?? keeper.AccountLabels.FirstOrDefault(p => p.Value == label).Key;
         return id is { } known && known != 0 && saved.Contains(known);
     }
-    private bool RepairedAutomatically(ActivityEntry entry) => autoReopen && IsRepairable(entry) && HasSavedLogin(entry.Label);
+    private bool RepairedAutomatically(ActivityEntry entry) => keeper.AutoReopen && IsRepairable(entry) && HasSavedLogin(entry.Label);
     // Says so when nothing will repair the account, so the alert is not a silent promise.
-    private ActivityEntry Explain(ActivityEntry entry) => autoReopen && IsRepairable(entry) && !HasSavedLogin(entry.Label)
+    private ActivityEntry Explain(ActivityEntry entry) => keeper.AutoReopen && IsRepairable(entry) && !HasSavedLogin(entry.Label)
         ? entry with { Message = entry.Message + " No saved login for this account, so it cannot be restarted automatically." } : entry;
 
     // Anything still reported as down after this long was not fixed by the automatic repair, so it now pings.
@@ -269,7 +263,7 @@ public sealed partial class MainViewModel
         {
             profiles.TryGetValue(id, out var profile);
             string name = profile?.CustomName ?? profile?.Username ?? saved;
-            if (pendingReopen.ContainsKey(id)) rows.Add(new(name, BoardState.Warn, "Closed · reopening soon"));
+            if (keeper.IsPendingReopen(id)) rows.Add(new(name, BoardState.Warn, "Closed · reopening soon"));
             else if (launch.IsStarting(id, now)) rows.Add(new(name, BoardState.Warn, "Starting…"));
             else if (profile?.LastSeen is { } last) rows.Add(new(name, BoardState.Down, $"Closed · last seen <t:{last.ToUnixTimeSeconds()}:R>"));
             else rows.Add(new(name, BoardState.Idle, "Not running"));

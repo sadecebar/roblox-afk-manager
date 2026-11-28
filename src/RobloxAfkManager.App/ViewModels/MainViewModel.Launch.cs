@@ -92,6 +92,7 @@ public sealed partial class MainViewModel
         vault = loginVault ?? new LoginVault();
         settingsFolder = folder ?? AppFolders.Data;
         launch = new LaunchService(this, vault, launcher, settingsFolder, log);
+        keeper = new HealthService(this, launch, settingsFolder, log);
         OpenClosedCommand = new(launch.OpenClosedAsync, () => HasClosedLogins, HandleError);
         OpenSelectedCommand = new(() => launch.LaunchAsync(vault.Logins.Where(l => selectedLogins.Contains(l.UserId) && !launch.IsActive(l.UserId, DateTimeOffset.UtcNow)).ToArray()),
             () => !launch.Launching && HasLaunchTarget && SelectedCount > 0, HandleError);
@@ -167,7 +168,7 @@ public sealed partial class MainViewModel
         }
     }
 
-    private string NameOf(long userId) => accountLabels.GetValueOrDefault(userId) ?? vault.Logins.FirstOrDefault(l => l.UserId == userId)?.Username ?? $"Account {userId}";
+    private string NameOf(long userId) => keeper.AccountLabels.GetValueOrDefault(userId) ?? vault.Logins.FirstOrDefault(l => l.UserId == userId)?.Username ?? $"Account {userId}";
 
     // ---- what the engine borrows from the dashboard (IEngineHost) ----
     IReadOnlyList<IClientView> IEngineHost.Clients => Clients;
@@ -176,7 +177,7 @@ public sealed partial class MainViewModel
     string IEngineHost.NameOf(long userId) => NameOf(userId);
     bool IEngineHost.Busy => Busy;
     bool IEngineHost.Disposed => disposed;
-    bool IEngineHost.OtherFixRunning => recovering || reopening;
+    bool IEngineHost.OtherFixRunning => keeper.Working;
     void IEngineHost.SetStatus(string message, bool warning) { Warning = warning; Message = message; }
     void IEngineHost.AddActivity(string label, string message, bool warning, bool announce, bool info, bool quiet) => AddActivity(label, message, warning, announce, info, quiet);
     void IEngineHost.LaunchStateChanged() { RaiseServers(); RefreshLogins(); }
